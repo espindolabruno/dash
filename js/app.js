@@ -8,6 +8,8 @@ const App = {
     leads: [],
     filteredLeads: [],
     dateFilter: '30', // Padrão: Últimos 30 dias
+    startDate: null,
+    endDate: null,
     searchQuery: '',
     currentPage: 1,
     itemsPerPage: 10,
@@ -21,6 +23,7 @@ const App = {
   // Inicializa o Dashboard
   init: function() {
     this.setupEventListeners();
+    this.updateDateRange('30');
     ChartsManager.init();
 
     this.log('INFO', 'System', 'Dashboard de Leads carregado com sucesso.');
@@ -159,16 +162,89 @@ const App = {
       this.loadClientData();
     });
 
-    // Filtros de Período
-    const periodButtons = document.querySelectorAll('.period-btn');
-    periodButtons.forEach(btn => {
+    // Novo Controle de Filtros de Período (Estilo Google Ads)
+    const trigger = document.getElementById('date-picker-trigger');
+    const dropdown = document.getElementById('date-picker-dropdown');
+    
+    if (trigger && dropdown) {
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('hidden');
+      });
+
+      // Fechar ao clicar fora
+      document.addEventListener('click', (e) => {
+        if (!trigger.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    // Clique nas opções predefinidas do dropdown
+    const optButtons = document.querySelectorAll('.picker-opt-btn');
+    optButtons.forEach(btn => {
       btn.addEventListener('click', (e) => {
-        periodButtons.forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        this.state.dateFilter = e.target.dataset.period;
-        this.applyFilters();
+        const range = e.target.dataset.range;
+        if (range === 'custom') {
+          this.state.dateFilter = 'custom';
+          this.updateDateUI();
+          // Não fecha o dropdown para deixar preencher as datas
+        } else {
+          this.updateDateRange(range);
+          if (dropdown) dropdown.classList.add('hidden');
+          this.applyFilters();
+        }
       });
     });
+
+    // Botão de Aplicar no Filtro Personalizado
+    const btnApplyCustom = document.getElementById('btn-apply-custom-date');
+    if (btnApplyCustom) {
+      btnApplyCustom.addEventListener('click', () => {
+        const startVal = document.getElementById('custom-start-date').value;
+        const endVal = document.getElementById('custom-end-date').value;
+        
+        if (!startVal || !endVal) {
+          alert('Por favor, selecione ambas as datas de início e fim.');
+          return;
+        }
+
+        // Adiciona timezone seguro interpretando como data local
+        const startD = new Date(startVal + 'T00:00:00');
+        const endD = new Date(endVal + 'T23:59:59');
+
+        if (startD > endD) {
+          alert('A data de início não pode ser maior que a data de fim.');
+          return;
+        }
+
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        if (endD > todayEnd) {
+          alert('A data final não pode ser posterior a hoje.');
+          return;
+        }
+
+        this.updateDateRange('custom', startVal, endVal);
+        if (dropdown) dropdown.classList.add('hidden');
+        this.applyFilters();
+      });
+    }
+
+    // Setas para navegação proporcional
+    const btnPrev = document.getElementById('btn-date-prev');
+    if (btnPrev) {
+      btnPrev.addEventListener('click', () => {
+        this.shiftDateRange('prev');
+      });
+    }
+
+    const btnNext = document.getElementById('btn-date-next');
+    if (btnNext) {
+      btnNext.addEventListener('click', () => {
+        this.shiftDateRange('next');
+      });
+    }
 
     // Busca na tabela
     document.getElementById('table-search').addEventListener('input', (e) => {
@@ -470,21 +546,209 @@ const App = {
     }
   },
 
+  // Helper methods for dates
+  formatDateShort: function(date) {
+    if (!date) return '';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month}`;
+  },
+
+  formatDateFull: function(date) {
+    if (!date) return '';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  },
+
+  formatDateInput: function(date) {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+
+  getLeadsMinMaxDates: function() {
+    if (this.state.leads.length === 0) {
+      return { min: new Date(), max: new Date() };
+    }
+    let min = null;
+    let max = null;
+    this.state.leads.forEach(lead => {
+      if (!lead.date) return;
+      const date = window.parseDateSafe(lead.date);
+      if (date) {
+        if (!min || date < min) min = date;
+        if (!max || date > max) max = date;
+      }
+    });
+    return { min: min || new Date(), max: max || new Date() };
+  },
+
+  updateDateRange: function(type, customStart = null, customEnd = null) {
+    const startOfDay = (d) => {
+      const nd = new Date(d);
+      nd.setHours(0, 0, 0, 0);
+      return nd;
+    };
+    const endOfDay = (d) => {
+      const nd = new Date(d);
+      nd.setHours(23, 59, 59, 999);
+      return nd;
+    };
+
+    this.state.dateFilter = type;
+
+    if (type === 'max' || type === 'all') {
+      this.state.startDate = null;
+      this.state.endDate = null;
+    } else if (type === 'custom') {
+      if (customStart && customEnd) {
+        // Usa string parsing seguro com timezone local (evita shift GMT)
+        this.state.startDate = startOfDay(new Date(customStart + 'T00:00:00'));
+        this.state.endDate = endOfDay(new Date(customEnd + 'T23:59:59'));
+      }
+    } else {
+      const now = new Date();
+      if (type === 'today' || type === 'hoje') {
+        this.state.startDate = startOfDay(now);
+        this.state.endDate = endOfDay(now);
+      } else if (type === 'yesterday' || type === 'ontem') {
+        const yesterday = new Date();
+        yesterday.setDate(now.getDate() - 1);
+        this.state.startDate = startOfDay(yesterday);
+        this.state.endDate = endOfDay(yesterday);
+      } else {
+        const days = parseInt(type);
+        if (!isNaN(days)) {
+          const start = new Date();
+          start.setDate(now.getDate() - (days - 1));
+          this.state.startDate = startOfDay(start);
+          this.state.endDate = endOfDay(now);
+        }
+      }
+    }
+
+    this.updateDateUI();
+  },
+
+  shiftDateRange: function(direction) {
+    if (!this.state.startDate || !this.state.endDate) return;
+
+    const startMs = this.state.startDate.getTime();
+    const endMs = this.state.endDate.getTime();
+    const diffDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24));
+    const daysToShift = diffDays + 1;
+
+    const newStart = new Date(this.state.startDate);
+    const newEnd = new Date(this.state.endDate);
+
+    if (direction === 'prev') {
+      newStart.setDate(newStart.getDate() - daysToShift);
+      newEnd.setDate(newEnd.getDate() - daysToShift);
+    } else if (direction === 'next') {
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      newStart.setDate(newStart.getDate() + daysToShift);
+      newEnd.setDate(newEnd.getDate() + daysToShift);
+
+      if (newEnd > todayEnd) {
+        return;
+      }
+    }
+
+    this.state.startDate = newStart;
+    this.state.endDate = newEnd;
+    this.state.dateFilter = 'custom';
+
+    this.updateDateUI();
+    this.applyFilters();
+  },
+
+  updateDateUI: function() {
+    const labelEl = document.getElementById('date-display-label');
+    if (!labelEl) return;
+
+    const type = this.state.dateFilter;
+    if (type === 'max' || type === 'all') {
+      labelEl.textContent = 'Máximo (Todo Período)';
+    } else if (type === 'today' || type === 'hoje') {
+      labelEl.textContent = `Hoje (${this.formatDateFull(this.state.startDate)})`;
+    } else if (type === 'yesterday' || type === 'ontem') {
+      labelEl.textContent = `Ontem (${this.formatDateFull(this.state.startDate)})`;
+    } else if (['3', '5', '7', '15', '30', '90'].includes(type)) {
+      labelEl.textContent = `Últimos ${type} dias (${this.formatDateShort(this.state.startDate)} - ${this.formatDateShort(this.state.endDate)})`;
+    } else {
+      labelEl.textContent = `${this.formatDateFull(this.state.startDate)} - ${this.formatDateFull(this.state.endDate)}`;
+    }
+
+    const optButtons = document.querySelectorAll('.picker-opt-btn');
+    optButtons.forEach(btn => {
+      if (btn.dataset.range === type) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    const customPanel = document.getElementById('custom-date-inputs-container');
+    if (customPanel) {
+      if (type === 'custom') {
+        customPanel.classList.remove('hidden');
+        if (this.state.startDate && this.state.endDate) {
+          document.getElementById('custom-start-date').value = this.formatDateInput(this.state.startDate);
+          document.getElementById('custom-end-date').value = this.formatDateInput(this.state.endDate);
+        } else {
+          const { min, max } = this.getLeadsMinMaxDates();
+          document.getElementById('custom-start-date').value = this.formatDateInput(min);
+          document.getElementById('custom-end-date').value = this.formatDateInput(max);
+        }
+      } else {
+        customPanel.classList.add('hidden');
+      }
+    }
+
+    const prevBtn = document.getElementById('btn-date-prev');
+    const nextBtn = document.getElementById('btn-date-next');
+
+    if (prevBtn && nextBtn) {
+      if (type === 'max' || type === 'all' || !this.state.startDate || !this.state.endDate) {
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+      } else {
+        prevBtn.disabled = false;
+
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const diffMs = this.state.endDate.getTime() - this.state.startDate.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+        const nextEnd = new Date(this.state.endDate);
+        nextEnd.setDate(nextEnd.getDate() + diffDays);
+
+        if (nextEnd > todayEnd) {
+          nextBtn.disabled = true;
+        } else {
+          nextBtn.disabled = false;
+        }
+      }
+    }
+  },
+
   // Filtra os leads por período e busca
   applyFilters: function() {
-    const now = new Date();
     let leadsToFilter = [...this.state.leads];
 
     // 1. Filtrar por período de tempo
-    if (this.state.dateFilter !== 'all') {
-      const limitDays = parseInt(this.state.dateFilter);
-      const limitDate = new Date();
-      limitDate.setDate(now.getDate() - limitDays);
-
+    if (this.state.startDate && this.state.endDate) {
       leadsToFilter = leadsToFilter.filter(lead => {
         if (!lead.date) return false;
         const leadDate = window.parseDateSafe(lead.date);
-        return leadDate && leadDate >= limitDate;
+        return leadDate && leadDate >= this.state.startDate && leadDate <= this.state.endDate;
       });
     }
 
@@ -518,7 +782,6 @@ const App = {
 
   // Consulta o Meta Ads v25.0 (ou simula requisições de debug no modo demo) e calcula o Custo por Lead
   fetchAndMergeMetaAds: async function() {
-    const dias = this.state.dateFilter === 'all' ? 90 : parseInt(this.state.dateFilter);
     const leadsMetaCount = this.state.filteredLeads.filter(l => 
       l.platform && (l.platform.includes('Meta') || l.platform.includes('Instagram'))
     ).length;
@@ -537,7 +800,13 @@ const App = {
     this.log('INFO', 'System', `Consultando performance do Meta Ads na VPS para '${accountName}' (ID: ${accountId})...`);
 
     try {
-      const url = `/api/meta-insights?days=${dias}&accountId=${accountId}&demo=${this.state.isDemoMode}`;
+      let url = `/api/meta-insights?accountId=${accountId}&demo=${this.state.isDemoMode}`;
+      if (this.state.startDate && this.state.endDate) {
+        const formatDate = (date) => date.toISOString().substring(0, 10);
+        url += `&startDate=${formatDate(this.state.startDate)}&endDate=${formatDate(this.state.endDate)}`;
+      } else {
+        url += `&days=90`;
+      }
       const response = await fetch(url);
       
       if (!response.ok) {

@@ -422,7 +422,7 @@ app.get('/api/leads', async (req, res) => {
 
 // 4. Rota de Proxy da API do Meta Ads (Marketing API v25.0)
 app.get('/api/meta-insights', async (req, res) => {
-  const { days, demo, accountId } = req.query;
+  const { days, demo, accountId, startDate, endDate } = req.query;
   const isDemo = demo === 'true';
   const limitDays = days ? parseInt(days) : 30;
 
@@ -432,9 +432,12 @@ app.get('/api/meta-insights', async (req, res) => {
   if (isDemo) {
     // Retorna logs e dados simulados para a UI
     const targetAccount = actId || 'act_77728399102';
+    const periodLabel = startDate && endDate 
+      ? `Período: ${startDate} a ${endDate}` 
+      : `Período: últimos ${limitDays} dias`;
     return res.json({
       logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta para a conta ${targetAccount} - Período: últimos ${limitDays} dias` },
+        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta para a conta ${targetAccount} - ${periodLabel}` },
         { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=ad&fields=ad_name,spend...` },
         { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Resposta recebida por Criativos (200 OK).' },
         { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=campaign&breakdowns=publisher_platform,device_platform...` },
@@ -475,15 +478,24 @@ app.get('/api/meta-insights', async (req, res) => {
   }
 
   // Calcular range de datas
-  const today = new Date();
-  const sinceDate = new Date();
-  sinceDate.setDate(today.getDate() - limitDays);
-  const formatDate = (date) => date.toISOString().substring(0, 10);
+  let since, until;
+  if (startDate && endDate) {
+    since = startDate;
+    until = endDate;
+  } else {
+    const today = new Date();
+    const sinceDate = new Date();
+    sinceDate.setDate(today.getDate() - limitDays);
+    const formatDate = (date) => date.toISOString().substring(0, 10);
+    since = formatDate(sinceDate);
+    until = formatDate(today);
+  }
 
-  const timeRange = JSON.stringify({ since: formatDate(sinceDate), until: formatDate(today) });
+  const timeRange = JSON.stringify({ since, until });
 
   try {
-    console.log(`Chamando Meta Ads API v25.0 para a conta ${actId} (Últimos ${limitDays} dias)...`);
+    const logPeriod = startDate && endDate ? `${startDate} a ${endDate}` : `Últimos ${limitDays} dias`;
+    console.log(`Chamando Meta Ads API v25.0 para a conta ${actId} (${logPeriod})...`);
     
     // Dispara chamadas de insights em paralelo
     const [campaignRes, creativeRes] = await Promise.all([
