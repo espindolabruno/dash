@@ -320,6 +320,21 @@ const App = {
       this.log('INFO', 'System', 'Buscando lista de clientes do Google Drive...');
       
       const response = await fetch(`/api/clients?demo=${this.state.isDemoMode}`);
+      
+      // Se der erro 500 (Drive desconectado ou não autorizado)
+      if (response.status === 500) {
+        this.state.clients = [];
+        this.populateClientsDropdown();
+        this.showLoader(false);
+        this.log('WARNING', 'System', 'Integração Google Drive inativa na VPS. Abra as configurações para autenticar via OAuth2.');
+        
+        // Abre o painel de configurações automaticamente para o usuário conectar
+        setTimeout(() => {
+          document.getElementById('btn-settings').click();
+        }, 600);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(`[Status ${response.status}] Erro ao buscar clientes.`);
       }
