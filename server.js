@@ -120,14 +120,14 @@ initGoogleAPI();
 // ==========================================================================
 const COLUMN_MAPPINGS = {
   date: ['data', 'horário', 'data e horário', 'data/hora', 'timestamp', 'data/horário', 'data_hora', 'created_at', 'date'],
-  name: ['nome', 'nome completo', 'leads', 'lead', 'client', 'cliente', 'name', 'full_name'],
-  phone: ['telefone', 'celular', 'whatsapp', 'whats', 'fone', 'phone', 'telephone', 'contato'],
-  device: ['dispositivo', 'dispositivo de conversão', 'device', 'mobile/desktop', 'aparelho'],
-  platform: ['plataforma', 'plataforma de conversão', 'platform', 'canal', 'rede', 'origem', 'midia', 'utm_source'],
+  name: ['nome_lead', 'nome', 'nome completo', 'leads', 'lead', 'client', 'cliente', 'name', 'full_name'],
+  phone: ['telefone_lead', 'telefone', 'celular', 'whatsapp', 'whats', 'fone', 'phone', 'telephone', 'contato'],
+  device: ['dispositivo_conversao', 'dispositivo', 'dispositivo de conversão', 'device', 'mobile/desktop', 'aparelho'],
+  platform: ['plataforma_conversao', 'plataforma', 'plataforma de conversão', 'platform', 'canal', 'rede', 'origem', 'midia', 'utm_source'],
   campaign: ['campanha', 'campaign', 'utm_campaign', 'nome da campanha'],
   adset: ['conjunto', 'conjunto de anúncios', 'adset', 'ad set', 'utm_medium', 'grupo de anúncios'],
-  creative: ['criativo', 'creative', 'utm_content', 'anúncio', 'ad'],
-  copy: ['copy', 'texto', 'utm_term', 'redação', 'copywriting']
+  creative: ['anuncio', 'criativo', 'creative', 'utm_content', 'anúncio', 'ad'],
+  copy: ['criativo_copy', 'copy', 'texto', 'utm_term', 'redação', 'copywriting']
 };
 
 // ==========================================================================
@@ -213,8 +213,8 @@ app.get('/api/leads', async (req, res) => {
   }
 
   try {
-    // A. Achar pasta 'Tráfego Pago' dentro do cliente
-    const queryTrafego = `'${clientId}' in parents and name = 'Tráfego Pago' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    // A. Achar pasta '03_TRÁFEGO PAGO' ou 'Tráfego Pago' dentro do cliente
+    const queryTrafego = `'${clientId}' in parents and (name = '03_TRÁFEGO PAGO' or name = '03_TRAFEGO PAGO' or name = 'Tráfego Pago') and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
     const resTrafego = await drive.files.list({
       q: queryTrafego,
       fields: 'files(id,name)'
