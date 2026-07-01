@@ -42,6 +42,44 @@ const App = {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
+    // Captura retornos de autenticação do Meta via URL params
+    const metaStatus = urlParams.get('meta_status');
+    const metaError = urlParams.get('meta_error');
+    const metaClient = urlParams.get('clientName');
+
+    if (metaStatus === 'success') {
+      this.log('SUCCESS', 'Meta Auth', `Conexão com o Facebook autorizada para o cliente '${metaClient}'!`);
+      alert(`Facebook conectado com sucesso para o cliente '${metaClient}'!`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Auto-seleciona o cliente e abre o modal de contas
+      this.state.selectedClient = metaClient;
+      const clientSelect = document.getElementById('client-select');
+      if (clientSelect) {
+        clientSelect.value = metaClient;
+      }
+      
+      // Garante que o dashboard real esteja sendo exibido se houver token de sessão
+      const savedToken = sessionStorage.getItem('session_token');
+      if (savedToken) {
+        this.state.isDemoMode = false;
+        document.getElementById('demo-badge').classList.add('hidden');
+        this.enterDashboard();
+      } else {
+        // Se não logado no painel, abre a tela do painel direto (ou deixa carregar)
+        this.enterDashboard();
+      }
+      
+      // Carrega os dados do cliente e abre o modal de contas
+      this.loadClientData().then(() => {
+        this.openMetaAccountsModal();
+      });
+    } else if (metaError) {
+      this.log('ERROR', 'Meta Auth', `Falha ao autorizar Facebook: ${metaError}`);
+      alert(`Falha ao conectar com o Facebook: ${metaError}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     // Tenta restaurar sessão real do painel caso exista
     const savedToken = sessionStorage.getItem('session_token');
     if (savedToken) {
@@ -240,6 +278,17 @@ const App = {
     // --- OUVINTES DO MODAL DE ESCOLHA DE CONTA META ADS ---
     document.getElementById('btn-vincular-meta').addEventListener('click', () => {
       this.openMetaAccountsModal();
+    });
+
+    // Ouvinte para fazer login via Meta OAuth
+    document.getElementById('btn-facebook-oauth').addEventListener('click', () => {
+      const clientName = this.state.selectedClient;
+      if (!clientName) {
+        alert('Selecione um cliente primeiro!');
+        return;
+      }
+      this.log('INFO', 'Meta Auth', `Redirecionando para login do Facebook para o cliente: ${clientName}...`);
+      window.location.href = `/api/meta/auth?clientName=${encodeURIComponent(clientName)}`;
     });
 
     const closeAccountsModal = () => {
@@ -722,7 +771,7 @@ const App = {
     try {
       this.log('INFO', 'Meta API v25.0', 'Carregando lista de contas de anúncios do Facebook...');
       
-      const response = await fetch(`/api/meta-accounts?demo=${this.state.isDemoMode}`);
+      const response = await fetch(`/api/meta-accounts?clientName=${encodeURIComponent(this.state.selectedClient)}&demo=${this.state.isDemoMode}`);
       if (!response.ok) {
         throw new Error(`[Status ${response.status}] Erro ao buscar contas.`);
       }

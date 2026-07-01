@@ -79,6 +79,35 @@ function readGoogleTokens() {
   return null;
 }
 
+// Banco de Dados JSON para tokens temporários do Meta Ads
+const TEMP_META_TOKENS_FILE = path.join(__dirname, 'data', 'temp_meta_tokens.json');
+
+function readTempMetaTokens() {
+  try {
+    if (fs.existsSync(TEMP_META_TOKENS_FILE)) {
+      const data = fs.readFileSync(TEMP_META_TOKENS_FILE, 'utf8');
+      return JSON.parse(data || '{}');
+    }
+  } catch (e) {
+    console.error("Erro ao ler temp_meta_tokens.json:", e);
+  }
+  return {};
+}
+
+function writeTempMetaTokens(tokens) {
+  try {
+    const dir = path.dirname(TEMP_META_TOKENS_FILE);
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(TEMP_META_TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error("Erro ao salvar temp_meta_tokens.json:", e);
+    return false;
+  }
+}
+
 // ==========================================================================
 // CONFIGURAÇÃO DO GOOGLE APIS (OAuth2 com Refresh Token)
 // ==========================================================================
@@ -316,10 +345,29 @@ app.get('/api/meta-insights', async (req, res) => {
     });
   }
 
-  const token = process.env.META_ACCESS_TOKEN;
+  let token = null;
+
+  if (actId) {
+    // Tenta encontrar o mapeamento que possui este ID de conta de anúncio
+    const cleanActId = actId.replace('act_', '');
+    const mappings = readMappings();
+    const mapping = mappings.find(m => {
+      const mappedId = m.meta_ad_account_id ? m.meta_ad_account_id.replace('act_', '') : '';
+      return mappedId === cleanActId;
+    });
+
+    if (mapping && mapping.meta_access_token) {
+      token = mapping.meta_access_token;
+    }
+  }
+
+  // Fallback para o token geral do .env
+  if (!token) {
+    token = process.env.META_ACCESS_TOKEN;
+  }
 
   if (!token || !actId) {
-    return res.status(400).json({ error: 'Chave de acesso (Token) ou Conta de Anúncios do Meta não configurados no servidor.' });
+    return res.status(400).json({ error: 'Chave de acesso (Token) ou Conta de Anúncios do Meta não configurados no servidor para esta conta.' });
   }
 
   if (!actId.startsWith('act_')) {
@@ -377,7 +425,8 @@ app.get('/api/meta-insights', async (req, res) => {
 
 // 5. Rota para Listar Contas de Anúncios do Facebook/Meta
 app.get('/api/meta-accounts', async (req, res) => {
-  const isDemo = req.query.demo === 'true';
+  const { clientName, demo } = req.query;
+  const isDemo = demo === 'true';
 
   if (isDemo) {
     // Retorna a lista de contas simuladas idêntica à imagem fornecida pelo usuário
@@ -393,13 +442,35 @@ app.get('/api/meta-accounts', async (req, res) => {
     ]);
   }
 
-  const token = process.env.META_ACCESS_TOKEN;
+  // Tentar encontrar token por ordem de prioridade:
+  let token = null;
+
+  if (clientName) {
+    // 1. Tenta token temporário de OAuth recém-gerado
+    const tempTokens = readTempMetaTokens();
+    if (tempTokens[clientName]) {
+      token = tempTokens[clientName];
+    } else {
+      // 2. Tenta token permanente no mapeamento existente
+      const mappings = readMappings();
+      const mapping = mappings.find(m => m.drive_client_name === clientName);
+      if (mapping && mapping.meta_access_token) {
+        token = mapping.meta_access_token;
+      }
+    }
+  }
+
+  // 3. Fallback para token global
   if (!token) {
-    return res.status(400).json({ error: 'META_ACCESS_TOKEN não configurado no servidor.' });
+    token = process.env.META_ACCESS_TOKEN;
+  }
+
+  if (!token) {
+    return res.status(400).json({ error: 'Nenhum Token de Acesso do Meta (META_ACCESS_TOKEN) configurado ou gerado para este cliente.' });
   }
 
   try {
-    console.log('Listando contas de anúncios do Facebook...');
+    console.log(`Listando contas de anúncios do Facebook para o cliente '${clientName || 'Desconhecido'}'...`);
     const response = await axios.get('https://graph.facebook.com/v25.0/me/adaccounts', {
       params: {
         access_token: token,
@@ -433,22 +504,43 @@ app.post('/api/mappings', (req, res) => {
 
   try {
     let mappings = readMappings();
+    const existingMapping = mappings.find(m => m.drive_client_name === drive_client_name);
+
+    // Identificar se há um token temporário salvo para este cliente
+    const tempTokens = readTempMetaTokens();
+    let metaToken = tempTokens[drive_client_name];
+
+    // Se não há token temporário, preserva o token permanente já salvo no mapeamento anterior (se houver)
+    if (!metaToken && existingMapping && existingMapping.meta_access_token) {
+      metaToken = existingMapping.meta_access_token;
+    }
 
     // Remove qualquer mapeamento anterior do mesmo cliente
     mappings = mappings.filter(m => m.drive_client_name !== drive_client_name);
 
     // Adiciona o novo mapeamento
-    mappings.push({
+    const newMapping = {
       drive_client_name,
       meta_ad_account_id,
       meta_ad_account_name: meta_ad_account_name || 'Desconhecido',
       instagram_username: instagram_username || 'Não vinculado',
       created_at: new Date().toISOString()
-    });
+    };
+
+    if (metaToken) {
+      newMapping.meta_access_token = metaToken;
+    }
+
+    mappings.push(newMapping);
 
     const success = writeMappings(mappings);
 
     if (success) {
+      // Limpa o token temporário após promover para o mapeamento permanente
+      if (tempTokens[drive_client_name]) {
+        delete tempTokens[drive_client_name];
+        writeTempMetaTokens(tempTokens);
+      }
       res.json({ success: true });
     } else {
       res.status(500).json({ error: 'Falha ao gravar arquivo de mapeamentos no servidor.' });
@@ -551,6 +643,100 @@ app.post('/api/google/disconnect', (req, res) => {
     res.status(500).json({ error: 'Erro ao desvincular conta: ' + err.message });
   }
 });
+
+// 11. Rota para Iniciar Autenticação do Meta OAuth pelo Painel
+app.get('/api/meta/auth', (req, res) => {
+  const { clientName } = req.query;
+  const appId = process.env.META_APP_ID;
+  const redirectUri = process.env.META_REDIRECT_URI;
+
+  if (!appId || !redirectUri) {
+    return res.status(400).send('Erro: META_APP_ID e META_REDIRECT_URI precisam estar configurados no .env da VPS.');
+  }
+
+  if (!clientName) {
+    return res.status(400).send('Erro: Nome do cliente ausente na autenticação.');
+  }
+
+  try {
+    // Configura o redirect_uri do Meta
+    // O escopo mínimo sugerido para gerenciar/visualizar anúncios é: ads_read, business_management
+    const scope = 'ads_read,business_management';
+    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(clientName)}&scope=${scope}`;
+    
+    res.redirect(authUrl);
+  } catch (err) {
+    res.status(500).send('Erro ao gerar URL de autorização do Meta: ' + err.message);
+  }
+});
+
+// 12. Rota de Callback da Autenticação do Meta
+app.get('/api/meta/callback', async (req, res) => {
+  const { code, state: clientName, error } = req.query;
+
+  if (error) {
+    return res.redirect(`/?meta_error=${encodeURIComponent(error)}`);
+  }
+
+  if (!code) {
+    return res.redirect('/?meta_error=codigo_ausente');
+  }
+
+  if (!clientName) {
+    return res.redirect('/?meta_error=cliente_ausente_no_state');
+  }
+
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  const redirectUri = process.env.META_REDIRECT_URI;
+
+  try {
+    console.log(`Iniciando troca de código OAuth para o cliente: ${clientName}...`);
+    
+    // A. Trocar código por token de curta duração (User Access Token)
+    const tokenRes = await axios.get('https://graph.facebook.com/v25.0/oauth/access_token', {
+      params: {
+        client_id: appId,
+        redirect_uri: redirectUri,
+        client_secret: appSecret,
+        code: code
+      }
+    });
+
+    const shortLivedToken = tokenRes.data.access_token;
+    if (!shortLivedToken) {
+      throw new Error('Não foi possível obter o token de acesso de curta duração.');
+    }
+
+    // B. Trocar token de curta duração por um de longa duração (Long-Lived User Access Token, ~60 dias)
+    const longLivedRes = await axios.get('https://graph.facebook.com/v25.0/oauth/access_token', {
+      params: {
+        grant_type: 'fb_exchange_token',
+        client_id: appId,
+        client_secret: appSecret,
+        fb_exchange_token: shortLivedToken
+      }
+    });
+
+    const longLivedToken = longLivedRes.data.access_token;
+    if (!longLivedToken) {
+      throw new Error('Não foi possível obter o token de acesso de longa duração.');
+    }
+
+    // C. Salvar temporariamente associado ao cliente
+    const tempTokens = readTempMetaTokens();
+    tempTokens[clientName] = longLivedToken;
+    writeTempMetaTokens(tempTokens);
+
+    console.log(`✅ Meta OAuth concluído com sucesso para o cliente '${clientName}'. Token temporário salvo.`);
+    res.redirect(`/?meta_status=success&clientName=${encodeURIComponent(clientName)}`);
+  } catch (err) {
+    const apiError = err.response?.data?.error?.message || err.message;
+    console.error('Erro no callback do Meta OAuth:', apiError);
+    res.redirect(`/?meta_error=${encodeURIComponent(apiError)}`);
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
