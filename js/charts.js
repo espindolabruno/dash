@@ -353,8 +353,13 @@ const ChartsManager = {
     
     // Agrupa por dia (AAAA-MM-DD)
     leads.forEach(l => {
-      if (!l.date) return;
-      const day = l.date.substring(0, 10);
+      const dateObj = l._parsedDate;
+      if (!dateObj) return;
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const date = String(dateObj.getDate()).padStart(2, '0');
+      const day = `${year}-${month}-${date}`;
+      
       if (!timelineData[day]) {
         timelineData[day] = {};
         platformsList.forEach(p => timelineData[day][p] = 0);
@@ -431,8 +436,7 @@ const ChartsManager = {
     };
 
     leads.forEach(l => {
-      if (!l.date) return;
-      const dateObj = window.parseDateSafe(l.date);
+      const dateObj = l._parsedDate;
       if (!dateObj) return;
       
       const day = dateObj.getDay(); // 0 a 6

@@ -254,11 +254,15 @@ const App = {
       });
     }
 
-    // Busca na tabela
+    // Busca na tabela (com debounce de 250ms para evitar travamentos e requisições excessivas)
+    let searchDebounceTimeout;
     document.getElementById('table-search').addEventListener('input', (e) => {
-      this.state.searchQuery = e.target.value.toLowerCase();
-      this.state.currentPage = 1;
-      this.applyFilters();
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = setTimeout(() => {
+        this.state.searchQuery = e.target.value.toLowerCase().trim();
+        this.state.currentPage = 1;
+        this.applyFilters(true); // Pula requisições de rede ao Meta Insights ao buscar/filtrar na tabela
+      }, 250);
     });
 
     // Seleção de Tipo de UTM no Gráfico
@@ -544,7 +548,11 @@ const App = {
       }
       
       const data = await response.json();
-      this.state.leads = data.leads || [];
+      this.state.leads = (data.leads || []).map(lead => {
+        // Pré-parse da data para otimização de performance em filtros recorrentes
+        lead._parsedDate = window.parseDateSafe(lead.date);
+        return lead;
+      });
       
       this.log('SUCCESS', 'System', `Leads obtidos da planilha. Total de registros: ${this.state.leads.length}.`);
 
@@ -613,8 +621,7 @@ const App = {
     let min = null;
     let max = null;
     this.state.leads.forEach(lead => {
-      if (!lead.date) return;
-      const date = window.parseDateSafe(lead.date);
+      const date = lead._parsedDate;
       if (date) {
         if (!min || date < min) min = date;
         if (!max || date > max) max = date;
@@ -776,14 +783,13 @@ const App = {
   },
 
   // Filtra os leads por período e busca
-  applyFilters: function() {
+  applyFilters: function(skipMetaFetch = false) {
     let leadsToFilter = [...this.state.leads];
 
-    // 1. Filtrar por período de tempo
+    // 1. Filtrar por período de tempo (otimizado usando data pré-processada)
     if (this.state.startDate && this.state.endDate) {
       leadsToFilter = leadsToFilter.filter(lead => {
-        if (!lead.date) return false;
-        const leadDate = window.parseDateSafe(lead.date);
+        const leadDate = lead._parsedDate;
         return leadDate && leadDate >= this.state.startDate && leadDate <= this.state.endDate;
       });
     }
@@ -809,8 +815,10 @@ const App = {
     ChartsManager.updateCharts(this.state.filteredLeads);
     ChartsManager.updateUtmRanking(this.state.filteredLeads, this.state.activeUtmTab);
     
-    // Dispara a consulta ao Meta Ads para obter custos e atualizar a UI
-    this.fetchAndMergeMetaAds();
+    // Dispara a consulta ao Meta Ads para obter custos e atualizar a UI se não for apenas pesquisa
+    if (!skipMetaFetch) {
+      this.fetchAndMergeMetaAds();
+    }
 
     // Renderiza tabela com os resultados
     this.renderTable();
@@ -1480,7 +1488,7 @@ const App = {
 
     if (this.state.startDate && this.state.endDate) {
       leadsToFilter = leadsToFilter.filter(lead => {
-        const leadDate = window.parseDateSafe(lead.date);
+        const leadDate = lead._parsedDate;
         return leadDate && leadDate >= this.state.startDate && leadDate <= this.state.endDate;
       });
     }
