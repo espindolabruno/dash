@@ -1,0 +1,9 @@
+node_modules/
+package-lock.json
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+.vscode/
+.idea/

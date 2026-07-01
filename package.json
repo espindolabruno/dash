@@ -1,0 +1,13 @@
+{
+  "name": "connect-agro-dash",
+  "version": "1.0.0",
+  "description": "Dashboard analítico de leads integrado ao Google Drive via OAuth2",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx http-server -p 5500"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

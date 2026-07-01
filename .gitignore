@@ -1,0 +1,19 @@
+# Dependências de desenvolvimento locais
+node_modules/
+package-lock.json
+
+# Arquivos temporários e logs de sistema/OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Pastas locais de ambiente IDE
+.vscode/
+.idea/
+
+# Arquivos de variáveis locais (caso sejam criados depois)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

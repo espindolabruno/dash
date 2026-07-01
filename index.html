@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect Agro - Lead Analytics Dashboard</title>
+  
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome para Ícones -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- CSS Principal -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- 1. TELA DE LOGIN (WELCOME SCREEN) -->
+  <div id="login-screen" class="app-screen welcome-bg active">
+    <!-- Efeitos visuais de fundo -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    
+    <div class="login-card glass-panel animate-fade-in">
+      <div class="brand-container">
+        <div class="logo-icon">
+          <i class="fa-solid fa-leaf text-glow"></i>
+        </div>
+        <h1 class="brand-title">Connect <span class="gradient-text">Agro</span></h1>
+        <p class="brand-subtitle">Lead Analytics Platform</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <p class="login-desc">Analise os leads de tráfego pago de todos os clientes da sua agência integrados diretamente com o Google Drive.</p>
+
+      <div class="login-actions">
+        <button id="btn-login-google" class="btn btn-google">
+          <i class="fa-brands fa-google btn-icon"></i>
+          <span>Entrar com o Google</span>
+        </button>
+        
+        <button id="btn-login-demo" class="btn btn-secondary">
+          <i class="fa-solid fa-flask btn-icon"></i>
+          <span>Acessar Modo Demo (Dados Simulados)</span>
+        </button>
+      </div>
+      
+      <div class="login-footer">
+        <p><i class="fa-solid fa-shield-halved"></i> Conexão segura ponta a ponta via OAuth2</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. TELA DO DASHBOARD PRINCIPAL -->
+  <div id="dashboard-screen" class="app-screen">
+    
+    <!-- HEADER DA APLICAÇÃO -->
+    <header class="main-header glass-panel">
+      <div class="header-left">
+        <div class="header-logo">
+          <i class="fa-solid fa-leaf brand-icon"></i>
+          <span>Connect <span class="gradient-text font-bold">Agro</span></span>
+        </div>
+        <span id="demo-badge" class="badge-demo hidden">MODO DEMO</span>
+      </div>
+
+      <div class="header-center">
+        <!-- Seletor de Cliente -->
+        <div class="select-wrapper">
+          <i class="fa-solid fa-briefcase select-icon"></i>
+          <select id="select-client" class="select-input">
+            <!-- Populado via JS -->
+          </select>
+        </div>
+
+        <!-- Seletor de Período -->
+        <div class="period-selector">
+          <button class="period-btn" data-period="7">7D</button>
+          <button class="period-btn active" data-period="30">30D</button>
+          <button class="period-btn" data-period="45">45D</button>
+          <button class="period-btn" data-period="all">Tudo</button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Ações do Administrador -->
+        <button id="btn-settings" class="action-btn" title="Configurar Google Drive">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+
+        <div class="user-profile">
+          <img id="user-avatar" src="" alt="Avatar" class="avatar-img">
+          <div class="user-details">
+            <span id="user-name" class="user-name">Carregando...</span>
+            <span id="user-email" class="user-email">email@exemplo.com</span>
+          </div>
+        </div>
+
+        <button id="btn-logout" class="action-btn btn-logout" title="Sair">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- ÁREA DE CONTEÚDO PRINCIPAL -->
+    <main class="dashboard-content">
+      
+      <!-- LINHA 1: CARDS DE KPI -->
+      <section class="kpi-grid">
+        <div class="kpi-card glass-panel animate-slide-up" style="--delay: 1;">
+          <div class="kpi-header">
+            <span class="kpi-title">Total de Leads</span>
+            <div class="kpi-icon-box bg-purple"><i class="fa-solid fa-user-plus"></i></div>
+          </div>
+          <div class="kpi-value" id="kpi-total-leads">0</div>
+          <div class="kpi-footer" id="kpi-trend">
+            <span class="trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +12% vs período anterior</span>
+          </div>
+        </div>
+
+        <div class="kpi-card glass-panel animate-slide-up" style="--delay: 2;">
+          <div class="kpi-header">
+            <span class="kpi-title">Canal Líder</span>
+            <div class="kpi-icon-box bg-blue"><i class="fa-solid fa-bullseye"></i></div>
+          </div>
+          <div class="kpi-value text-ellipsis" id="kpi-top-channel">Carregando...</div>
+          <div class="kpi-footer">
+            <span>Canal com mais conversões</span>
+          </div>
+        </div>
+
+        <div class="kpi-card glass-panel animate-slide-up" style="--delay: 3;">
+          <div class="kpi-header">
+            <span class="kpi-title">Lead em Dispositivo Móvel</span>
+            <div class="kpi-icon-box bg-green"><i class="fa-solid fa-mobile-screen-button"></i></div>
+          </div>
+          <div class="kpi-value" id="kpi-mobile-share">0%</div>
+          <div class="kpi-footer">
+            <span>Volume via Mobile</span>
+          </div>
+        </div>
+
+        <div class="kpi-card glass-panel animate-slide-up" style="--delay: 4;">
+          <div class="kpi-header">
+            <span class="kpi-title">Investimento Meta Ads</span>
+            <div class="kpi-icon-box bg-orange"><i class="fa-solid fa-dollar-sign"></i></div>
+          </div>
+          <div class="kpi-value" id="kpi-meta-spend">R$ 0,00</div>
+          <div class="kpi-footer" id="kpi-meta-cpl">
+            <span>CPL Médio: R$ 0,00</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- LINHA 2: GRÁFICOS PRINCIPAIS -->
+      <section class="charts-row-1">
+        <!-- Timeline de Volume de Leads -->
+        <div class="chart-container glass-panel lg-span animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Evolução Diária de Leads</h3>
+              <p class="chart-subtitle">Volume de conversões agrupado por plataforma de anúncio</p>
+            </div>
+            <i class="fa-solid fa-chart-line header-icon text-glow-blue"></i>
+          </div>
+          <div class="chart-body">
+            <div id="chart-timeline"></div>
+          </div>
+        </div>
+
+        <!-- Distribuição por Plataforma -->
+        <div class="chart-container sm-span glass-panel animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Participação de Canais</h3>
+              <p class="chart-subtitle">Leads por canal de aquisição</p>
+            </div>
+            <i class="fa-solid fa-chart-pie header-icon text-glow-purple"></i>
+          </div>
+          <div class="chart-body">
+            <div id="chart-platforms"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LINHA 3: GRÁFICOS COMPLEMENTARES -->
+      <section class="charts-row-2">
+        <!-- Dispositivos de Conversão -->
+        <div class="chart-container glass-panel animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Dispositivos</h3>
+              <p class="chart-subtitle">Origem de acesso do lead</p>
+            </div>
+            <i class="fa-solid fa-laptop-mobile header-icon"></i>
+          </div>
+          <div class="chart-body">
+            <div id="chart-devices"></div>
+          </div>
+        </div>
+
+        <!-- Top 5 Campanhas -->
+        <div class="chart-container glass-panel animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Top Campanhas</h3>
+              <p class="chart-subtitle">Melhores campanhas em volume</p>
+            </div>
+            <i class="fa-solid fa-medal header-icon text-glow-orange"></i>
+          </div>
+          <div class="chart-body">
+            <div id="chart-campaigns"></div>
+          </div>
+        </div>
+
+        <!-- Ranking UTMs (Criativos, Copies, Conjuntos) -->
+        <div class="chart-container glass-panel animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Desempenho de Anúncio</h3>
+              <p class="chart-subtitle">Análise das UTMs das campanhas</p>
+            </div>
+            <div class="utm-selector">
+              <button class="utm-btn active" data-type="creative">Criativo</button>
+              <button class="utm-btn" data-type="copy">Copy</button>
+              <button class="utm-btn" data-type="adset">Conjunto</button>
+            </div>
+          </div>
+          <div class="chart-body">
+            <div id="chart-utm-ranking"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LINHA 4: HEATMAP E TABELA DE LEADS -->
+      <section class="bottom-section">
+        <!-- Mapa de Calor de Conversão (Dia e Hora) -->
+        <div class="chart-container heatmap-container glass-panel animate-fade-in">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Picos de Conversão</h3>
+              <p class="chart-subtitle">Leads por dia da semana e horário</p>
+            </div>
+            <i class="fa-solid fa-fire header-icon text-glow-red"></i>
+          </div>
+          <div class="chart-body">
+            <div id="chart-heatmap"></div>
+          </div>
+        </div>
+
+        <!-- Tabela de Leads Detalhada -->
+        <div class="table-container glass-panel animate-fade-in">
+          <div class="table-header">
+            <div class="table-header-left">
+              <h3 class="chart-title">Base de Leads</h3>
+              <span id="table-counter" class="leads-counter">0 leads encontrados</span>
+            </div>
+            <div class="table-actions">
+              <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="table-search" placeholder="Buscar por nome, telefone, campanha...">
+              </div>
+              <button id="btn-export-csv" class="btn-action">
+                <i class="fa-solid fa-file-excel"></i> Exportar CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="leads-table">
+              <thead>
+                <tr>
+                  <th>Data/Hora</th>
+                  <th>Nome</th>
+                  <th>Telefone</th>
+                  <th>Canal</th>
+                  <th>Dispositivo</th>
+                  <th>Campanha</th>
+                  <th>Conjunto</th>
+                  <th>Criativo</th>
+                  <th>Copy</th>
+                </tr>
+              </thead>
+              <tbody id="leads-table-body">
+                <!-- Populado via JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="table-footer">
+            <button id="btn-prev-page" class="pagination-btn" disabled>
+              <i class="fa-solid fa-angle-left"></i> Anterior
+            </button>
+            <span id="page-indicator" class="page-indicator">Página 1 de 1</span>
+            <button id="btn-next-page" class="pagination-btn" disabled>
+              Próximo <i class="fa-solid fa-angle-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- 3. LOADER DA APLICAÇÃO -->
+  <div id="app-loader" class="app-loader">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <p class="loader-message">Carregando dados...</p>
+    </div>
+  </div>
+
+  <!-- 4. MODAL DE CONFIGURAÇÕES -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-card modal-lg glass-panel animate-fade-in">
+      <div class="modal-header">
+        <h3>Painel de Integrações & Logs</h3>
+        <button id="btn-close-modal" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      
+      <div class="modal-tabs">
+        <button class="modal-tab-btn active" data-tab="tab-drive">Google Drive</button>
+        <button class="modal-tab-btn" data-tab="tab-meta">Meta Ads API (v25.0)</button>
+        <button class="modal-tab-btn" data-tab="tab-logs">Console de Logs (<span id="log-count">0</span>)</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Aba Google Drive -->
+        <div id="tab-drive" class="modal-tab-content active">
+          <p class="modal-desc">Configure o acesso ao Google Drive informando as credenciais de autenticação e ID da pasta raiz.</p>
+          
+          <div class="form-group margin-bottom-16">
+            <label for="input-google-client-id">Google Client ID (OAuth):</label>
+            <input type="text" id="input-google-client-id" placeholder="Digite seu Client ID do Google Cloud">
+            <small>Gerado no Google Cloud Console > Credenciais > ID do Cliente OAuth (ex: 12345...apps.googleusercontent.com)</small>
+          </div>
+
+          <div class="form-group">
+            <label for="input-folder-id">ID da Pasta Raiz "Clientes":</label>
+            <input type="text" id="input-folder-id" placeholder="Digite o ID da pasta do Drive">
+            <small>O ID no final da URL da pasta no seu navegador (ex: drive.google.com/drive/folders/<strong>ID_AQUI</strong>)</small>
+          </div>
+        </div>
+
+        <!-- Aba Meta Ads -->
+        <div id="tab-meta" class="modal-tab-content">
+          <p class="modal-desc">Configure a chave de acesso do Meta para carregar os dados de Custo, Cliques e Impressões em tempo real.</p>
+          
+          <div class="form-group margin-bottom-16">
+            <label for="input-meta-token">Meta Access Token (Token do Usuário do Sistema):</label>
+            <input type="password" id="input-meta-token" placeholder="EAAW...">
+            <small>Insira o Token permanente gerado no painel do Meta Business Suite > Configurações do Negócio > Desenvolvedores.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="input-meta-account">ID da Conta de Anúncios (Ad Account ID):</label>
+            <input type="text" id="input-meta-account" placeholder="act_1234567890">
+            <small>ID da conta de anúncios que será consultada para obter os dados de custo das campanhas.</small>
+          </div>
+        </div>
+
+        <!-- Aba Console de Logs -->
+        <div id="tab-logs" class="modal-tab-content">
+          <div class="logs-header-actions">
+            <p class="modal-desc">Histórico de requisições e processamento em tempo real para depuração.</p>
+            <button id="btn-clear-logs" class="btn-clear-logs-btn"><i class="fa-solid fa-trash-can"></i> Limpar Logs</button>
+          </div>
+          <div class="log-console-container">
+            <div id="log-console-output" class="log-console-output">
+              <!-- Logs populados via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-save-settings" class="btn btn-primary">Salvar e Atualizar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS CDN -->
+  <!-- Google Sign-In SDK (Google Identity Services) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <!-- ApexCharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <!-- SCRIPTS DA APLICAÇÃO -->
+  <script src="js/mockData.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/driveService.js"></script>
+  <script src="js/metaService.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
