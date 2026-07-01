@@ -466,7 +466,8 @@ app.get('/api/meta-accounts', async (req, res) => {
   }
 
   if (!token) {
-    return res.status(400).json({ error: 'Nenhum Token de Acesso do Meta (META_ACCESS_TOKEN) configurado ou gerado para este cliente.' });
+    console.log(`[Meta] Nenhum token encontrado para o cliente '${clientName || 'Desconhecido'}'. Retornando lista vazia para permitir conexão.`);
+    return res.json([]);
   }
 
   try {

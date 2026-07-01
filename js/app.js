@@ -773,7 +773,8 @@ const App = {
       
       const response = await fetch(`/api/meta-accounts?clientName=${encodeURIComponent(this.state.selectedClient)}&demo=${this.state.isDemoMode}`);
       if (!response.ok) {
-        throw new Error(`[Status ${response.status}] Erro ao buscar contas.`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `[Status ${response.status}] Erro ao buscar contas.`);
       }
 
       this.state.metaAccounts = await response.json();
@@ -856,7 +857,8 @@ const App = {
       });
 
       if (!response.ok) {
-        throw new Error(`[Status ${response.status}] Falha ao registrar mapeamento.`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `[Status ${response.status}] Falha ao registrar mapeamento.`);
       }
 
       this.log('SUCCESS', 'System', `Cliente '${this.state.selectedClient}' associado com sucesso à conta '${adAccountName}' (ID: ${adAccountId}).`);
