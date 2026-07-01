@@ -223,21 +223,19 @@ const App = {
   enterDashboard: function() {
     this.showScreen('dashboard-screen');
     
-    // Se estiver em modo real, atualiza perfil
-    if (!this.state.isDemoMode && Auth.userProfile) {
-      this.updateUserInfoUI(Auth.userProfile);
+    // Se estiver em modo real, exibe o perfil do Administrador da VPS
+    if (!this.state.isDemoMode) {
+      this.updateUserInfoUI({
+        name: 'Administrador VPS',
+        email: 'admin@connectagro.com.br',
+        picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'
+      });
     } else {
       this.updateUserInfoUI({
         name: 'Usuário Demonstrativo',
         email: 'demo@connectagro.com.br',
         picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80'
       });
-    }
-
-    // Carrega ID da pasta raiz do localStorage
-    const savedFolderId = localStorage.getItem('root_folder_id');
-    if (savedFolderId) {
-      DriveService.ROOT_FOLDER_ID = savedFolderId;
     }
 
     this.loadClients();
