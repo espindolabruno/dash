@@ -483,9 +483,8 @@ const App = {
 
       leadsToFilter = leadsToFilter.filter(lead => {
         if (!lead.date) return false;
-        // Normaliza a data para comparar
-        const leadDate = new Date(lead.date.replace(' ', 'T'));
-        return leadDate >= limitDate;
+        const leadDate = window.parseDateSafe(lead.date);
+        return leadDate && leadDate >= limitDate;
       });
     }
 

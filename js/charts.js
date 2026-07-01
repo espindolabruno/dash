@@ -1,3 +1,43 @@
+// Função global para converter strings de datas variadas de forma segura no frontend
+window.parseDateSafe = function(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  
+  let dateObj = new Date(dateStr);
+  if (!isNaN(dateObj.getTime())) return dateObj;
+  
+  // Tenta normalizar espaços por 'T' para ISO-8601
+  let normalized = dateStr.toString().replace(' ', 'T');
+  dateObj = new Date(normalized);
+  if (!isNaN(dateObj.getTime())) return dateObj;
+  
+  // Trata o formato brasileiro comum: DD/MM/AAAA - HH:MM:SS ou DD/MM/AAAA HH:MM
+  if (dateStr.includes('/')) {
+    const cleanStr = dateStr.toString().replace(/\s*-\s*/g, ' ').trim();
+    const parts = cleanStr.split(/\s+/);
+    const dateParts = parts[0].split('/');
+    if (dateParts.length === 3) {
+      const day = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1; // 0-indexed no JS
+      let year = parseInt(dateParts[2], 10);
+      if (year < 100) year += 2000;
+      
+      let hours = 0, minutes = 0, seconds = 0;
+      if (parts[1]) {
+        const timeParts = parts[1].split(':');
+        hours = parseInt(timeParts[0], 10) || 0;
+        minutes = parseInt(timeParts[1], 10) || 0;
+        seconds = parseInt(timeParts[2], 10) || 0;
+      }
+      
+      dateObj = new Date(year, month, day, hours, minutes, seconds);
+      if (!isNaN(dateObj.getTime())) return dateObj;
+    }
+  }
+  
+  return null;
+};
+
 // Gerenciador de Gráficos (utilizando ApexCharts)
 const ChartsManager = {
   instances: {},
@@ -147,7 +187,15 @@ const ChartsManager = {
         type: 'heatmap',
         height: 280
       },
-      dataLabels: { enabled: false },
+      dataLabels: { 
+        enabled: true,
+        style: {
+          fontSize: '10px',
+          fontFamily: 'var(--font-main)',
+          fontWeight: 'bold',
+          colors: ['var(--text-primary)']
+        }
+      },
       colors: ['#00F2FE'], // Gradiente azul/ciano
       plotOptions: {
         heatmap: {
@@ -164,17 +212,17 @@ const ChartsManager = {
               from: 1,
               to: 5,
               name: 'Baixo',
-              color: 'rgba(0, 242, 254, 0.2)'
+              color: 'rgba(0, 242, 254, 0.35)'
             }, {
               from: 6,
               to: 15,
               name: 'Médio',
-              color: 'rgba(0, 242, 254, 0.5)'
+              color: 'rgba(0, 242, 254, 0.65)'
             }, {
               from: 16,
               to: 1000,
               name: 'Alto',
-              color: 'rgba(0, 242, 254, 0.9)'
+              color: 'rgba(0, 242, 254, 0.95)'
             }]
           }
         }
@@ -309,8 +357,8 @@ const ChartsManager = {
 
     leads.forEach(l => {
       if (!l.date) return;
-      const dateObj = new Date(l.date.replace(' ', 'T'));
-      if (isNaN(dateObj.getTime())) return;
+      const dateObj = window.parseDateSafe(l.date);
+      if (!dateObj) return;
       
       const day = dateObj.getDay(); // 0 a 6
       const hour = dateObj.getHours(); // 0 a 23
