@@ -358,15 +358,17 @@
           <p class="modal-desc">Todas as credenciais sensíveis estão salvas como variáveis de ambiente (.env) de forma segura na sua VPS.</p>
           
           <div class="status-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
-            <div class="status-item glass-panel" style="padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.1);">
-              <h4 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--primary); display: flex; align-items: center; gap: 8px;">
-                <i class="fa-brands fa-google"></i> Google Drive & Sheets
-              </h4>
-              <ul style="list-style: none; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; color: var(--text-secondary);">
-                <li>Client ID: <span style="color: var(--success);">Injetado (.env)</span></li>
-                <li>Folder ID: <span style="color: var(--success);">Configurado</span></li>
-                <li>Status: <span class="badge badge-platform" style="padding: 2px 6px; font-size: 0.7rem;">Ativo (Server-Side)</span></li>
-              </ul>
+            <div id="google-connection-card" class="status-item glass-panel" style="grid-column: 1 / -1; padding: 20px; border-radius: var(--border-radius-lg); display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.1); transition: var(--transition-smooth);">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div id="google-connection-icon" class="facebook-icon-circle" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: #10b981; width: 48px; height: 48px; font-size: 1.3rem;">
+                  <i class="fa-solid fa-link"></i>
+                </div>
+                <div>
+                  <h4 id="google-connection-title" style="font-size: 1.05rem; font-weight: 600; color: #fff;">Verificando conexão...</h4>
+                  <p id="google-connection-desc" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Consultando status da VPS</p>
+                </div>
+              </div>
+              <button id="btn-google-toggle-connect" class="pagination-btn" style="padding: 10px 24px; font-size: 0.85rem; font-weight: 600; border-radius: var(--border-radius-md); transition: var(--transition-smooth); min-width: 120px;">Carregando</button>
             </div>
 
             <div class="status-item glass-panel" style="padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.1);">

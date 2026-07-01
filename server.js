@@ -50,6 +50,35 @@ function writeMappings(mappings) {
   }
 }
 
+// Banco de Dados JSON para tokens do Google OAuth2
+const TOKENS_FILE = path.join(__dirname, 'data', 'google_tokens.json');
+
+function saveGoogleTokens(tokens) {
+  try {
+    const dir = path.dirname(TOKENS_FILE);
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error("Erro ao salvar google_tokens.json:", e);
+    return false;
+  }
+}
+
+function readGoogleTokens() {
+  try {
+    if (fs.existsSync(TOKENS_FILE)) {
+      const data = fs.readFileSync(TOKENS_FILE, 'utf8');
+      return JSON.parse(data || 'null');
+    }
+  } catch (e) {
+    console.error("Erro ao ler google_tokens.json:", e);
+  }
+  return null;
+}
+
 // ==========================================================================
 // CONFIGURAÇÃO DO GOOGLE APIS (OAuth2 com Refresh Token)
 // ==========================================================================
@@ -61,7 +90,10 @@ function initGoogleAPI() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+  // Busca do token salvo no servidor ou cai no fallback do .env
+  const savedTokens = readGoogleTokens();
+  const refreshToken = savedTokens ? savedTokens.refresh_token : process.env.GOOGLE_REFRESH_TOKEN;
 
   if (clientId && clientSecret && refreshToken) {
     try {
@@ -70,12 +102,15 @@ function initGoogleAPI() {
       
       drive = google.drive({ version: 'v3', auth: oauth2Client });
       sheets = google.sheets({ version: 'v4', auth: oauth2Client });
-      console.log('✅ Google API inicializada com sucesso (OAuth2 Refresh Token).');
+      console.log('✅ Google API inicializada com sucesso (OAuth2 Refresh Token ativo).');
     } catch (err) {
       console.error('❌ Erro ao inicializar o cliente do Google API:', err.message);
     }
   } else {
-    console.warn('⚠️ Google API não configurada. Preencha as variáveis no seu .env para utilizar o Modo Real.');
+    oauth2Client = null;
+    drive = null;
+    sheets = null;
+    console.warn('⚠️ Google API pendente de autenticação. Requer conexão manual na aba Status do Painel.');
   }
 }
 initGoogleAPI();
@@ -423,7 +458,99 @@ app.post('/api/mappings', (req, res) => {
   }
 });
 
-// Forçar redirecionamento do index.html para todas as páginas estáticas
+// 7. Rota para Iniciar Autenticação do Google OAuth2 pelo Painel
+app.get('/api/google/auth', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    return res.status(400).send('Erro: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI precisam estar configurados no .env da VPS.');
+  }
+
+  try {
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    const authUrl = oauth2.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent', // Força a exibição do consentimento para retornar o refresh_token todas as vezes
+      scope: ['https://www.googleapis.com/auth/drive.readonly']
+    });
+    
+    res.redirect(authUrl);
+  } catch (err) {
+    res.status(500).send('Erro ao gerar URL de autorização: ' + err.message);
+  }
+});
+
+// 8. Rota de Callback da Autenticação do Google
+app.get('/api/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    return res.redirect(`/?google_error=${encodeURIComponent(error)}`);
+  }
+
+  if (!code) {
+    return res.redirect('/?google_error=codigo_ausente');
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  try {
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    const { tokens } = await oauth2.getToken(code);
+
+    if (tokens.refresh_token) {
+      saveGoogleTokens(tokens);
+      // Reinicializa a API do Google com o novo token salvo
+      initGoogleAPI();
+      console.log('✅ Google OAuth2 concluído com sucesso. Token persistido.');
+      res.redirect('/?google_status=connected');
+    } else {
+      // Se não retornou refresh_token (caso o prompt consent falhe), tenta ler o existente
+      const existing = readGoogleTokens();
+      if (existing && existing.refresh_token) {
+        // Aproveita o existente, mas atualiza o access token
+        tokens.refresh_token = existing.refresh_token;
+        saveGoogleTokens(tokens);
+        initGoogleAPI();
+        res.redirect('/?google_status=connected_existing');
+      } else {
+        res.redirect('/?google_error=refresh_token_ausente');
+      }
+    }
+  } catch (err) {
+    console.error('Erro no callback do Google OAuth2:', err);
+    res.redirect(`/?google_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// 9. Obter status da conexão com o Google Drive
+app.get('/api/google/status', (req, res) => {
+  const isConnected = (drive !== null && sheets !== null);
+  res.json({ connected: isConnected });
+});
+
+// 10. Desconectar o Google Drive
+app.post('/api/google/disconnect', (req, res) => {
+  try {
+    if (fs.existsSync(TOKENS_FILE)) {
+      fs.unlinkSync(TOKENS_FILE);
+    }
+    
+    // Reseta as instâncias da API
+    oauth2Client = null;
+    drive = null;
+    sheets = null;
+    
+    console.log('⚠️ Google API desconectada pelo usuário no painel.');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao desvincular conta: ' + err.message });
+  }
+});
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });

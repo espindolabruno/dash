@@ -26,6 +26,22 @@ const App = {
     this.log('INFO', 'System', 'Dashboard de Leads carregado com sucesso.');
     this.log('INFO', 'System', 'Monitor de APIs do Google Drive e Meta Graph v25.0 ativo na VPS.');
 
+    // Captura retornos de autenticação do Google via URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const googleStatus = urlParams.get('google_status');
+    const googleError = urlParams.get('google_error');
+
+    if (googleStatus) {
+      this.log('SUCCESS', 'Google Auth', 'Conexão com o Google Drive autorizada com sucesso na VPS!');
+      alert('Google Drive conectado com sucesso!');
+      // Limpa a URL para deixar limpa
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (googleError) {
+      this.log('ERROR', 'Google Auth', `Falha ao autorizar Google Drive: ${googleError}`);
+      alert(`Falha ao conectar com o Google Drive: ${googleError}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     // Tenta restaurar sessão real do painel caso exista
     const savedToken = sessionStorage.getItem('session_token');
     if (savedToken) {
@@ -173,6 +189,7 @@ const App = {
       // Reseta para a primeira aba
       tabButtons[0].click();
       document.getElementById('settings-modal').classList.add('active');
+      this.checkGoogleStatus(); // Busca status dinâmico do Google na VPS
     });
 
     document.getElementById('btn-close-modal').addEventListener('click', () => {
@@ -183,6 +200,33 @@ const App = {
       this.log('INFO', 'System', 'Recarregando dados do servidor VPS...');
       document.getElementById('settings-modal').classList.remove('active');
       this.loadClients();
+    });
+
+    // Controle do Botão Conectar/Desconectar Google Drive
+    document.getElementById('btn-google-toggle-connect').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-google-toggle-connect');
+      if (btn.dataset.action === 'connect') {
+        this.log('INFO', 'Google Auth', 'Iniciando redirecionamento para consentimento do Google OAuth2...');
+        window.location.href = '/api/google/auth';
+      } else if (btn.dataset.action === 'disconnect') {
+        if (!confirm('Deseja realmente desconectar a sua conta do Google Drive da VPS?')) return;
+        
+        this.showLoader(true, 'Desconectando Google Drive...');
+        try {
+          const response = await fetch('/api/google/disconnect', { method: 'POST' });
+          if (response.ok) {
+            this.log('WARNING', 'Google Auth', 'Conexão com o Google Drive revogada pelo usuário.');
+            alert('Google Drive desconectado com sucesso.');
+            await this.checkGoogleStatus();
+          } else {
+            alert('Erro ao desconectar conta do Google.');
+          }
+        } catch (err) {
+          alert('Erro ao conectar ao servidor: ' + err.message);
+        } finally {
+          this.showLoader(false);
+        }
+      }
     });
 
     // Limpar logs
@@ -763,6 +807,58 @@ const App = {
       this.showLoader(false);
       this.log('ERROR', 'System', `Erro ao associar conta do Meta: ${err.message}`);
       alert(`Erro ao vincular conta: ${err.message}`);
+    }
+  },
+
+  // Verifica e atualiza visualmente o card de status de conexão do Google Drive
+  checkGoogleStatus: async function() {
+    try {
+      const response = await fetch('/api/google/status');
+      if (!response.ok) throw new Error();
+      
+      const data = await response.json();
+      
+      const card = document.getElementById('google-connection-card');
+      const icon = document.getElementById('google-connection-icon');
+      const title = document.getElementById('google-connection-title');
+      const desc = document.getElementById('google-connection-desc');
+      const btn = document.getElementById('btn-google-toggle-connect');
+
+      if (data.connected) {
+        // Estado Conectado (Corrente Verde)
+        icon.style.background = 'rgba(16, 185, 129, 0.1)';
+        icon.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+        icon.style.color = '#10b981';
+        icon.innerHTML = '<i class="fa-solid fa-link"></i>';
+        
+        title.textContent = 'Google Drive Ativo';
+        desc.textContent = 'Arquivos restritos liberados';
+        desc.style.color = '#10b981';
+        
+        btn.textContent = 'Desconectar';
+        btn.style.background = 'rgba(239, 68, 68, 0.1)';
+        btn.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+        btn.style.color = '#ef4444';
+        btn.dataset.action = 'disconnect';
+      } else {
+        // Estado Desconectado (Corrente Cinza/Vermelha)
+        icon.style.background = 'rgba(239, 68, 68, 0.1)';
+        icon.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+        icon.style.color = '#ef4444';
+        icon.innerHTML = '<i class="fa-solid fa-link-slash"></i>';
+        
+        title.textContent = 'Google Drive Inativo';
+        desc.textContent = 'Requer autenticação OAuth2';
+        desc.style.color = 'var(--text-secondary)';
+        
+        btn.textContent = 'Conectar';
+        btn.style.background = 'var(--primary)';
+        btn.style.borderColor = 'transparent';
+        btn.style.color = '#fff';
+        btn.dataset.action = 'connect';
+      }
+    } catch (err) {
+      console.error("Erro ao verificar status do Google Drive:", err);
     }
   }
 };
