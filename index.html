@@ -120,6 +120,20 @@
     <!-- ÁREA DE CONTEÚDO PRINCIPAL -->
     <main class="dashboard-content">
       
+      <!-- Banner de Vinculação Meta Ads -->
+      <div id="meta-unmapped-banner" class="unmapped-banner glass-panel animate-fade-in hidden" style="padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-color: rgba(249, 115, 22, 0.3); background: rgba(249, 115, 22, 0.05); margin-bottom: 8px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <i class="fa-solid fa-circle-exclamation" style="color: var(--accent-2); font-size: 1.2rem; filter: drop-shadow(0 0 5px rgba(249, 115, 22, 0.3));"></i>
+          <div>
+            <h4 style="font-size: 0.9rem; font-weight: 600;">Conta de Anúncios Desvinculada</h4>
+            <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">Este cliente não possui nenhuma conta de anúncios do Meta Ads vinculada na VPS.</p>
+          </div>
+        </div>
+        <button id="btn-vincular-meta" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(0, 242, 254, 0.15); width: auto;">
+          <i class="fa-solid fa-link"></i> Vincular Conta do Facebook
+        </button>
+      </div>
+      
       <!-- LINHA 1: CARDS DE KPI -->
       <section class="kpi-grid">
         <div class="kpi-card glass-panel animate-slide-up" style="--delay: 1;">
@@ -386,6 +400,34 @@
         <button id="btn-reload-dashboard" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-rotate"></i> Recarregar Dados
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. MODAL ESCOLHER CONTA DO META ADS -->
+  <div id="meta-accounts-modal" class="modal-overlay">
+    <div class="modal-card modal-lg glass-panel animate-fade-in" style="max-width: 850px; width: 95%;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px;">Escolher conta</h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">Escolha uma conta do Facebook para usar no cliente <span id="mapped-client-title" class="gradient-text font-bold" style="font-size: 0.95rem;">CLIENTE</span>:</p>
+        </div>
+        <button id="btn-close-accounts-modal" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="modal-body" style="padding-top: 0;">
+        <div class="search-box" style="margin-bottom: 20px; display: flex; width: 100%;">
+          <i class="fa-solid fa-magnifying-glass search-icon" style="top: 13px; left: 16px;"></i>
+          <input type="text" id="input-search-accounts" placeholder="Buscar conta..." style="width: 100%; padding: 12px 16px 12px 42px; font-size: 0.9rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--border-radius-md); color: #fff; outline: none; transition: var(--transition-smooth);">
+        </div>
+
+        <div id="meta-accounts-grid" class="accounts-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; max-height: 380px; overflow-y: auto; padding: 4px;">
+          <!-- Contas populadas via JS dinamicamente (vide imagem) -->
+        </div>
+      </div>
+
+      <div class="modal-footer" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; display: flex; justify-content: flex-end;">
+        <button id="btn-cancel-accounts" class="pagination-btn" style="padding: 10px 24px;">Cancelar</button>
       </div>
     </div>
   </div>

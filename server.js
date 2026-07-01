@@ -7,6 +7,7 @@ const dotenv = require('dotenv');
 const axios = require('axios');
 const { google } = require('googleapis');
 const path = require('path');
+const fs = require('fs');
 
 // Carregar variáveis de ambiente
 dotenv.config();
@@ -19,6 +20,35 @@ app.use(express.json());
 
 // Servir arquivos estáticos da pasta atual (frontend)
 app.use(express.static(__dirname));
+
+// Banco de Dados JSON para mapeamento de clientes
+const MAPPINGS_FILE = path.join(__dirname, 'data', 'mappings.json');
+
+function readMappings() {
+  try {
+    if (fs.existsSync(MAPPINGS_FILE)) {
+      const data = fs.readFileSync(MAPPINGS_FILE, 'utf8');
+      return JSON.parse(data || '[]');
+    }
+  } catch (e) {
+    console.error("Erro ao ler mappings.json:", e);
+  }
+  return [];
+}
+
+function writeMappings(mappings) {
+  try {
+    const dir = path.dirname(MAPPINGS_FILE);
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(MAPPINGS_FILE, JSON.stringify(mappings, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error("Erro ao salvar mappings.json:", e);
+    return false;
+  }
+}
 
 // ==========================================================================
 // CONFIGURAÇÃO DO GOOGLE APIS (OAuth2 com Refresh Token)
@@ -124,10 +154,19 @@ app.get('/api/leads', async (req, res) => {
   const { clientId, clientName, demo } = req.query;
   const isDemo = demo === 'true';
 
+  const mappings = readMappings();
+  const mapping = mappings.find(m => m.drive_client_name === clientName);
+
   if (isDemo) {
     // Gerar dados simulados via mock data local
     const leads = generateMockLeads(clientName || 'AgroForte Sementes');
-    return res.json(leads);
+    return res.json({
+      leads: leads,
+      mapped: !!mapping,
+      meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null,
+      meta_ad_account_name: mapping ? mapping.meta_ad_account_name : null,
+      instagram_username: mapping ? mapping.instagram_username : null
+    });
   }
 
   if (!drive || !sheets) {
@@ -148,7 +187,7 @@ app.get('/api/leads', async (req, res) => {
     const folderTrafego = resTrafego.data.files?.[0];
 
     if (!folderTrafego) {
-      return res.json([]); // Retorna vazio se não tiver pasta
+      return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
     }
 
     // B. Achar planilhas em 'Tráfego Pago'
@@ -161,7 +200,7 @@ app.get('/api/leads', async (req, res) => {
     const sheetFile = resSheets.data.files?.[0];
 
     if (!sheetFile) {
-      return res.json([]);
+      return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
     }
 
     // C. Ler os valores do Sheets
@@ -172,7 +211,7 @@ app.get('/api/leads', async (req, res) => {
     const rows = resValues.data.values;
 
     if (!rows || rows.length < 2) {
-      return res.json([]); // Apenas cabeçalho ou vazia
+      return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
     }
 
     // D. Normalização de colunas
@@ -204,7 +243,13 @@ app.get('/api/leads', async (req, res) => {
       return lead;
     }).filter(lead => lead.name || lead.phone);
 
-    res.json(leads);
+    res.json({
+      leads: leads,
+      mapped: !!mapping,
+      meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null,
+      meta_ad_account_name: mapping ? mapping.meta_ad_account_name : null,
+      instagram_username: mapping ? mapping.instagram_username : null
+    });
   } catch (err) {
     console.error('Erro ao ler leads do Sheets:', err);
     res.status(500).json({ error: 'Erro ao carregar planilha: ' + err.message });
@@ -213,17 +258,23 @@ app.get('/api/leads', async (req, res) => {
 
 // 4. Rota de Proxy da API do Meta Ads (Marketing API v25.0)
 app.get('/api/meta-insights', async (req, res) => {
-  const { days, demo } = req.query;
+  const { days, demo, accountId } = req.query;
   const isDemo = demo === 'true';
   const limitDays = days ? parseInt(days) : 30;
 
+  // Determinar qual conta de anúncio usar
+  let actId = accountId || process.env.META_AD_ACCOUNT_ID;
+
   if (isDemo) {
     // Retorna logs e dados simulados para a UI
+    const targetAccount = actId || 'act_77728399102';
     return res.json({
       logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta simulada para o período de ${limitDays} dias.` },
-        { type: 'INFO', source: 'Meta API v25.0', message: 'GET https://graph.facebook.com/v25.0/act_77728399102/insights?level=ad&fields=ad_name,spend,clicks...' },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Dados de anúncios retornados com sucesso (200 OK).' }
+        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta para a conta ${targetAccount} - Período: últimos ${limitDays} dias` },
+        { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=ad&fields=ad_name,spend...` },
+        { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Resposta recebida por Criativos (200 OK).' },
+        { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=campaign&breakdowns=publisher_platform,device_platform...` },
+        { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Resposta recebida por Plataforma/Dispositivo (200 OK).' }
       ],
       spend: 1450.00,
       cpl: 14.50
@@ -231,10 +282,9 @@ app.get('/api/meta-insights', async (req, res) => {
   }
 
   const token = process.env.META_ACCESS_TOKEN;
-  let actId = process.env.META_AD_ACCOUNT_ID;
 
   if (!token || !actId) {
-    return res.status(400).json({ error: 'Credenciais da API do Meta Ads não configuradas no servidor (.env).' });
+    return res.status(400).json({ error: 'Chave de acesso (Token) ou Conta de Anúncios do Meta não configurados no servidor.' });
   }
 
   if (!actId.startsWith('act_')) {
@@ -278,14 +328,98 @@ app.get('/api/meta-insights', async (req, res) => {
       campaigns: campaignRes.data.data || [],
       creatives: creativeRes.data.data || [],
       logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Conexão bem sucedida. Retornados ${campaignRes.data.data?.length || 0} registros de campanhas.` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Sucesso no processamento de insights de anúncios (v25.0).` }
+        { type: 'INFO', source: 'Meta API v25.0', message: `Consulta efetuada na conta ${actId}.` },
+        { type: 'INFO', source: 'Meta API v25.0', message: `Retornados ${campaignRes.data.data?.length || 0} registros de campanhas e ${creativeRes.data.data?.length || 0} criativos.` },
+        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Sucesso no processamento de insights de anúncios v25.0.` }
       ]
     });
   } catch (err) {
     const apiError = err.response?.data?.error?.message || err.message;
     console.error('Erro na API do Meta:', apiError);
     res.status(500).json({ error: 'Meta API Error: ' + apiError });
+  }
+});
+
+// 5. Rota para Listar Contas de Anúncios do Facebook/Meta
+app.get('/api/meta-accounts', async (req, res) => {
+  const isDemo = req.query.demo === 'true';
+
+  if (isDemo) {
+    // Retorna a lista de contas simuladas idêntica à imagem fornecida pelo usuário
+    return res.json([
+      { id: '1034348999771083', name: 'VM Equipamentos', instagram: '@vm_equipamentos' },
+      { id: '1052303464636478', name: 'Ceres Equipamentos Agrícolas', instagram: '@ceresequipamentos' },
+      { id: '966926099845282', name: 'Grão Mestre Agronegócio LTDA', instagram: '@graomestreagronegocio' },
+      { id: '992044477332218', name: 'Alex AgroMaquinas', instagram: '@alexagromaquinas' },
+      { id: '883506211509062', name: 'Wk Climatização', instagram: '@wkclimatizacao' },
+      { id: '762012070327017', name: 'Maquina BRUTA - JETTA', instagram: '@maquinabruta.jetta' },
+      { id: '78080065103414', name: 'Beá Laguna', instagram: '@bealagunaconcursos' },
+      { id: '721272574409970', name: 'Four Face Madeiras', instagram: '@fourfacemadeiras' }
+    ]);
+  }
+
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) {
+    return res.status(400).json({ error: 'META_ACCESS_TOKEN não configurado no servidor.' });
+  }
+
+  try {
+    console.log('Listando contas de anúncios do Facebook...');
+    const response = await axios.get('https://graph.facebook.com/v25.0/me/adaccounts', {
+      params: {
+        access_token: token,
+        fields: 'id,name,account_id,instagram_accounts{username}'
+      }
+    });
+
+    const accounts = (response.data.data || []).map(acc => {
+      const insta = acc.instagram_accounts?.data?.[0]?.username;
+      return {
+        id: acc.account_id || acc.id.replace('act_', ''),
+        name: acc.name,
+        instagram: insta ? `@${insta}` : 'Não vinculado'
+      };
+    });
+
+    res.json(accounts);
+  } catch (err) {
+    const apiError = err.response?.data?.error?.message || err.message;
+    res.status(500).json({ error: 'Erro ao listar contas do Facebook: ' + apiError });
+  }
+});
+
+// 6. Rota para Salvar Mapeamento de Cliente
+app.post('/api/mappings', (req, res) => {
+  const { drive_client_name, meta_ad_account_id, meta_ad_account_name, instagram_username } = req.body;
+
+  if (!drive_client_name || !meta_ad_account_id) {
+    return res.status(400).json({ error: 'Campos drive_client_name e meta_ad_account_id são obrigatórios.' });
+  }
+
+  try {
+    let mappings = readMappings();
+
+    // Remove qualquer mapeamento anterior do mesmo cliente
+    mappings = mappings.filter(m => m.drive_client_name !== drive_client_name);
+
+    // Adiciona o novo mapeamento
+    mappings.push({
+      drive_client_name,
+      meta_ad_account_id,
+      meta_ad_account_name: meta_ad_account_name || 'Desconhecido',
+      instagram_username: instagram_username || 'Não vinculado',
+      created_at: new Date().toISOString()
+    });
+
+    const success = writeMappings(mappings);
+
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Falha ao gravar arquivo de mapeamentos no servidor.' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

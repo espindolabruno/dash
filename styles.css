@@ -1119,6 +1119,98 @@ body {
 .log-entry.error { color: #fda4af; }
 .log-entry.error .log-source { color: var(--error); }
 
+/* Estilos do Grid e Cards de Escolha de Contas Meta Ads (Facebook/Instagram) */
+.accounts-grid::-webkit-scrollbar {
+  width: 6px;
+}
+.accounts-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+.accounts-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--border-radius-lg);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.account-card:hover {
+  background: rgba(24, 119, 242, 0.04);
+  border-color: rgba(24, 119, 242, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(24, 119, 242, 0.1);
+}
+
+.facebook-icon-circle {
+  width: 44px;
+  height: 44px;
+  background: rgba(24, 119, 242, 0.1);
+  border: 1px solid rgba(24, 119, 242, 0.2);
+  color: #1877F2;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.05);
+}
+
+.account-card:hover .facebook-icon-circle {
+  background: #1877F2;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(24, 119, 242, 0.4);
+}
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* Permite truncar texto longo */
+}
+
+.account-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.instagram-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(168, 85, 247, 0.1);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.instagram-tag i {
+  font-size: 0.75rem;
+}
+
 /* 11. RESPONSIVIDADE */
 @media (max-width: 1400px) {
   .charts-row-1 {

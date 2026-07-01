@@ -11,7 +11,10 @@ const App = {
     searchQuery: '',
     currentPage: 1,
     itemsPerPage: 10,
-    activeUtmTab: 'creative'
+    activeUtmTab: 'creative',
+    metaAccounts: [],
+    filteredMetaAccounts: [],
+    mappedMetaAccount: null
   },
   logCount: 0,
 
@@ -184,6 +187,31 @@ const App = {
       this.logCount = 0;
       this.log('INFO', 'System', 'Console de logs limpo pelo usuário.');
     });
+
+    // --- OUVINTES DO MODAL DE ESCOLHA DE CONTA META ADS ---
+    document.getElementById('btn-vincular-meta').addEventListener('click', () => {
+      this.openMetaAccountsModal();
+    });
+
+    const closeAccountsModal = () => {
+      document.getElementById('meta-accounts-modal').classList.remove('active');
+    };
+    
+    document.getElementById('btn-close-accounts-modal').addEventListener('click', closeAccountsModal);
+    document.getElementById('btn-cancel-accounts').addEventListener('click', closeAccountsModal);
+
+    // Filtro de Busca Reativo no Modal de Contas
+    document.getElementById('input-search-accounts').addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      if (!query) {
+        this.state.filteredMetaAccounts = [...this.state.metaAccounts];
+      } else {
+        this.state.filteredMetaAccounts = this.state.metaAccounts.filter(acc => 
+          acc.name.toLowerCase().includes(query) || acc.id.includes(query) || (acc.instagram && acc.instagram.toLowerCase().includes(query))
+        );
+      }
+      this.renderMetaAccountsGrid();
+    });
   },
 
   // Entra na tela do dashboard e carrega os clientes
@@ -300,8 +328,26 @@ const App = {
         throw new Error(errorData.error || `[Status ${response.status}] Falha ao buscar leads.`);
       }
       
-      this.state.leads = await response.json();
+      const data = await response.json();
+      this.state.leads = data.leads || [];
+      
       this.log('SUCCESS', 'System', `Leads obtidos da planilha. Total de registros: ${this.state.leads.length}.`);
+
+      // Gerencia o mapeamento do Meta Ads para este cliente
+      const banner = document.getElementById('meta-unmapped-banner');
+      if (data.mapped) {
+        banner.classList.add('hidden');
+        this.state.mappedMetaAccount = {
+          id: data.meta_ad_account_id,
+          name: data.meta_ad_account_name,
+          instagram: data.instagram_username
+        };
+        this.log('INFO', 'System', `Mapeamento Meta Ads ativo: Conta '${data.meta_ad_account_name}' (${data.instagram_username}).`);
+      } else {
+        banner.classList.remove('hidden');
+        this.state.mappedMetaAccount = null;
+        this.log('WARNING', 'System', `Atenção: O cliente '${this.state.selectedClient}' não possui conta do Meta Ads associada.`);
+      }
 
       this.state.currentPage = 1;
       this.applyFilters();
@@ -366,10 +412,21 @@ const App = {
       l.platform && (l.platform.includes('Meta') || l.platform.includes('Instagram'))
     ).length;
 
-    this.log('INFO', 'System', `Consultando performance do Meta Ads na VPS (Período: ${dias} dias)...`);
+    // Se o cliente não possuir conta associada
+    if (!this.state.mappedMetaAccount) {
+      document.getElementById('kpi-meta-spend').textContent = 'Sem Vínculo';
+      document.getElementById('kpi-meta-cpl').innerHTML = '<span>Associe uma conta do FB</span>';
+      this.log('WARNING', 'Dashboard', 'Leitura do Meta ignorada: Nenhuma conta vinculada a este cliente.');
+      return;
+    }
+
+    const accountId = this.state.mappedMetaAccount.id;
+    const accountName = this.state.mappedMetaAccount.name;
+
+    this.log('INFO', 'System', `Consultando performance do Meta Ads na VPS para '${accountName}' (ID: ${accountId})...`);
 
     try {
-      const url = `/api/meta-insights?days=${dias}&demo=${this.state.isDemoMode}`;
+      const url = `/api/meta-insights?days=${dias}&accountId=${accountId}&demo=${this.state.isDemoMode}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -390,10 +447,8 @@ const App = {
       let totalSpend = 0;
       
       if (this.state.isDemoMode) {
-        // No modo Demo, calcula custo simulado e exibe
         totalSpend = data.spend || (leadsMetaCount * 14.50);
       } else if (data.campaigns) {
-        // No modo Real, soma o spend de todas as campanhas retornadas da Marketing API
         data.campaigns.forEach(item => {
           totalSpend += parseFloat(item.spend || 0);
         });
@@ -404,9 +459,9 @@ const App = {
 
       // 4. Atualizar UI
       document.getElementById('kpi-meta-spend').textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      document.getElementById('kpi-meta-cpl').innerHTML = `<span>CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+      document.getElementById('kpi-meta-cpl').innerHTML = `<span title="${accountName}">CPL: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
       
-      this.log('SUCCESS', 'Dashboard', `Cálculo concluído: R$ ${totalSpend.toFixed(2)} investidos, CPL médio de R$ ${cpl.toFixed(2)}.`);
+      this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos, CPL: R$ ${cpl.toFixed(2)}.`);
 
     } catch (err) {
       document.getElementById('kpi-meta-spend').textContent = 'Erro VPS';
@@ -594,6 +649,117 @@ const App = {
       console.warn(`[${source}] ⚠️ ${message}`);
     } else {
       console.log(`[${source}] ℹ️ ${message}`);
+    }
+  },
+
+  // Abre o modal de Contas do Meta Ads carregando os dados do backend
+  openMetaAccountsModal: async function() {
+    this.showLoader(true, 'Buscando contas de anúncios no Facebook...');
+    document.getElementById('input-search-accounts').value = '';
+    
+    try {
+      this.log('INFO', 'Meta API v25.0', 'Carregando lista de contas de anúncios do Facebook...');
+      
+      const response = await fetch(`/api/meta-accounts?demo=${this.state.isDemoMode}`);
+      if (!response.ok) {
+        throw new Error(`[Status ${response.status}] Erro ao buscar contas.`);
+      }
+
+      this.state.metaAccounts = await response.json();
+      this.state.filteredMetaAccounts = [...this.state.metaAccounts];
+
+      this.log('SUCCESS', 'Meta API v25.0', `Contas de anúncios carregadas: ${this.state.metaAccounts.length} encontradas.`);
+      
+      // Atualiza títulos do modal
+      document.getElementById('mapped-client-title').textContent = this.state.selectedClient;
+      
+      // Renderiza os cards
+      this.renderMetaAccountsGrid();
+      
+      this.showLoader(false);
+      document.getElementById('meta-accounts-modal').classList.add('active');
+    } catch (err) {
+      this.showLoader(false);
+      this.log('ERROR', 'Meta API v25.0', `Falha ao obter contas de anúncios: ${err.message}`);
+      alert(`Falha ao obter contas de anúncios do Meta: ${err.message}`);
+    }
+  },
+
+  // Renderiza o grid de cards de contas do Meta de forma reativa
+  renderMetaAccountsGrid: function() {
+    const grid = document.getElementById('meta-accounts-grid');
+    grid.innerHTML = '';
+
+    if (this.state.filteredMetaAccounts.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary);">
+          Nenhuma conta encontrada com o termo buscado.
+        </div>
+      `;
+      return;
+    }
+
+    this.state.filteredMetaAccounts.forEach(account => {
+      const card = document.createElement('div');
+      card.className = 'account-card';
+      
+      card.innerHTML = `
+        <div class="facebook-icon-circle">
+          <i class="fa-brands fa-facebook-f"></i>
+        </div>
+        <div class="account-info">
+          <div class="account-name" title="${account.name}">${account.name}</div>
+          <div class="account-id">ID: ${account.id}</div>
+          <div class="instagram-tag">
+            <i class="fa-brands fa-instagram"></i>
+            <span>Insta: ${account.instagram || 'Não vinculado'}</span>
+          </div>
+        </div>
+      `;
+
+      // Evento de clique para mapear a conta ao cliente
+      card.addEventListener('click', () => {
+        this.mapMetaAccountToClient(account.id, account.name, account.instagram);
+      });
+
+      grid.appendChild(card);
+    });
+  },
+
+  // Salva o mapeamento no servidor e recarrega os dados do cliente
+  mapMetaAccountToClient: async function(adAccountId, adAccountName, instagramUsername) {
+    this.showLoader(true, `Vinculando '${adAccountName}' ao cliente '${this.state.selectedClient}'...`);
+    
+    try {
+      this.log('INFO', 'System', `Enviando mapeamento do cliente '${this.state.selectedClient}' para conta Meta '${adAccountName}'...`);
+      
+      const response = await fetch('/api/mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          drive_client_name: this.state.selectedClient,
+          meta_ad_account_id: adAccountId,
+          meta_ad_account_name: adAccountName,
+          instagram_username: instagramUsername
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`[Status ${response.status}] Falha ao registrar mapeamento.`);
+      }
+
+      this.log('SUCCESS', 'System', `Cliente '${this.state.selectedClient}' associado com sucesso à conta '${adAccountName}' (ID: ${adAccountId}).`);
+      
+      // Fecha o modal
+      document.getElementById('meta-accounts-modal').classList.remove('active');
+      
+      // Recarrega todos os dados do cliente ativo
+      await this.loadClientData();
+      this.showLoader(false);
+    } catch (err) {
+      this.showLoader(false);
+      this.log('ERROR', 'System', `Erro ao associar conta do Meta: ${err.message}`);
+      alert(`Erro ao vincular conta: ${err.message}`);
     }
   }
 };
