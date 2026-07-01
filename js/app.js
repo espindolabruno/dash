@@ -21,17 +21,17 @@ const App = {
     ChartsManager.init();
 
     this.log('INFO', 'System', 'Dashboard de Leads carregado com sucesso.');
-    this.log('INFO', 'System', 'Monitor de APIs do Google Drive e Meta Graph v25.0 ativo.');
+    this.log('INFO', 'System', 'Monitor de APIs do Google Drive e Meta Graph v25.0 ativo na VPS.');
 
-    // Tenta restaurar sessão real do Google caso exista
-    const restored = Auth.restoreSession();
-    if (restored) {
-      this.log('SUCCESS', 'Google Auth', 'Sessão Google OAuth2 anterior restaurada.');
+    // Tenta restaurar sessão real do painel caso exista
+    const savedToken = sessionStorage.getItem('session_token');
+    if (savedToken) {
+      this.log('SUCCESS', 'Auth', 'Sessão anterior restaurada na VPS.');
       this.state.isDemoMode = false;
       document.getElementById('demo-badge').classList.add('hidden');
       this.enterDashboard();
     } else {
-      this.log('INFO', 'System', 'Aguardando autenticação do usuário...');
+      this.log('INFO', 'System', 'Aguardando login do usuário...');
       // Exibe tela de login
       this.showScreen('login-screen');
     }
@@ -39,25 +39,56 @@ const App = {
 
   // Configura todos os ouvintes de eventos da UI
   setupEventListeners: function() {
-    // Botões de login
-    document.getElementById('btn-login-google').addEventListener('click', () => {
-      this.state.isDemoMode = false;
-      this.initGoogleAuthAndLogin();
+    // Botão de Login (Usuário/Senha na VPS)
+    document.getElementById('btn-login-submit').addEventListener('click', async () => {
+      const user = document.getElementById('input-username').value.trim();
+      const pass = document.getElementById('input-password').value.trim();
+
+      if (!user || !pass) {
+        alert('Por favor, preencha o usuário e a senha.');
+        return;
+      }
+
+      this.showLoader(true, 'Verificando credenciais na VPS...');
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user, password: pass })
+        });
+        
+        const data = await response.json();
+        this.showLoader(false);
+
+        if (response.ok && data.success) {
+          this.log('SUCCESS', 'Auth', `Login efetuado com sucesso como '${user}'.`);
+          this.state.isDemoMode = false;
+          sessionStorage.setItem('session_token', data.token);
+          document.getElementById('demo-badge').classList.add('hidden');
+          this.enterDashboard();
+        } else {
+          this.log('ERROR', 'Auth', `Tentativa de login falhou para '${user}': ${data.error}`);
+          alert(data.error || 'Credenciais inválidas.');
+        }
+      } catch (err) {
+        this.showLoader(false);
+        this.log('ERROR', 'Auth', `Falha de conexão com a VPS: ${err.message}`);
+        alert('Não foi possível conectar ao servidor. Verifique se a aplicação Node.js está rodando.');
+      }
     });
 
     document.getElementById('btn-login-demo').addEventListener('click', () => {
       this.state.isDemoMode = true;
+      this.log('INFO', 'Auth', 'Acessando em Modo Demo (Dados Simulados).');
       document.getElementById('demo-badge').classList.remove('hidden');
       this.enterDashboard();
     });
 
     // Logout
     document.getElementById('btn-logout').addEventListener('click', () => {
-      if (this.state.isDemoMode) {
-        window.location.reload();
-      } else {
-        Auth.logout();
-      }
+      this.log('INFO', 'Auth', 'Sessão encerrada pelo usuário.');
+      sessionStorage.removeItem('session_token');
+      window.location.reload();
     });
 
     // Seletor de Cliente
@@ -129,22 +160,10 @@ const App = {
       });
     });
 
-    // Modal de Configuração de Pasta & Meta
+    // Modal de Controle VPS & Logs
     document.getElementById('btn-settings').addEventListener('click', () => {
-      // Carrega valores do Google Drive
-      const folderId = localStorage.getItem('root_folder_id') || DriveService.ROOT_FOLDER_ID;
-      document.getElementById('input-folder-id').value = folderId;
-
-      const googleClientId = localStorage.getItem('google_client_id') || '';
-      document.getElementById('input-google-client-id').value = googleClientId;
-
-      // Carrega valores do Meta
-      document.getElementById('input-meta-token').value = localStorage.getItem('meta_access_token') || '';
-      document.getElementById('input-meta-account').value = localStorage.getItem('meta_ad_account_id') || '';
-      
       // Reseta para a primeira aba
       tabButtons[0].click();
-
       document.getElementById('settings-modal').classList.add('active');
     });
 
@@ -152,24 +171,8 @@ const App = {
       document.getElementById('settings-modal').classList.remove('active');
     });
 
-    document.getElementById('btn-save-settings').addEventListener('click', () => {
-      // Salva Google Drive
-      const folderId = document.getElementById('input-folder-id').value.trim();
-      localStorage.setItem('root_folder_id', folderId);
-      DriveService.ROOT_FOLDER_ID = folderId;
-
-      const googleClientId = document.getElementById('input-google-client-id').value.trim();
-      localStorage.setItem('google_client_id', googleClientId);
-      Auth.CLIENT_ID = googleClientId; // Atualiza em tempo real na classe de autenticação
-
-      // Salva Meta Ads
-      const metaToken = document.getElementById('input-meta-token').value.trim();
-      const metaAccount = document.getElementById('input-meta-account').value.trim();
-      localStorage.setItem('meta_access_token', metaToken);
-      localStorage.setItem('meta_ad_account_id', metaAccount);
-
-      this.log('SUCCESS', 'Configurações', 'Configurações salvas localmente no navegador.');
-
+    document.getElementById('btn-reload-dashboard').addEventListener('click', () => {
+      this.log('INFO', 'System', 'Recarregando dados do servidor VPS...');
       document.getElementById('settings-modal').classList.remove('active');
       this.loadClients();
     });
@@ -181,39 +184,6 @@ const App = {
       this.logCount = 0;
       this.log('INFO', 'System', 'Console de logs limpo pelo usuário.');
     });
-  },
-
-  // Inicializa a biblioteca GIS e faz login
-  initGoogleAuthAndLogin: function() {
-    this.showLoader(true, 'Conectando com o Google...');
-    
-    // Se o Client ID não foi alterado na configuração
-    if (Auth.CLIENT_ID.startsWith('SEU_CLIENT_ID')) {
-      this.showLoader(false);
-      alert('Por favor, configure o CLIENT_ID correto no arquivo js/auth.js ou utilize o Modo Demo.');
-      return;
-    }
-
-    Auth.init(
-      (profile) => {
-        // Sucesso no login
-        this.showLoader(false);
-        this.updateUserInfoUI(profile);
-        this.enterDashboard();
-      },
-      (errorMsg) => {
-        // Falha no login
-        this.showLoader(false);
-        alert(errorMsg);
-      }
-    );
-
-    // Se já estiver pré-carregada e não logou automaticamente, dispara login popup
-    setTimeout(() => {
-      if (!Auth.isAuthenticated()) {
-        Auth.login();
-      }
-    }, 500);
   },
 
   // Entra na tela do dashboard e carrega os clientes
@@ -272,13 +242,17 @@ const App = {
   loadClients: async function() {
     this.showLoader(true, 'Carregando lista de clientes...');
     try {
-      if (this.state.isDemoMode) {
-        this.state.clients = MockData.clientes.map((c, i) => ({ id: `demo-id-${i}`, name: c }));
-      } else {
-        this.state.clients = await DriveService.fetchClients();
+      this.log('INFO', 'System', 'Buscando lista de clientes do Google Drive...');
+      
+      const response = await fetch(`/api/clients?demo=${this.state.isDemoMode}`);
+      if (!response.ok) {
+        throw new Error(`[Status ${response.status}] Erro ao buscar clientes.`);
       }
-
+      
+      this.state.clients = await response.json();
       this.populateClientsDropdown();
+
+      this.log('SUCCESS', 'System', `Clientes carregados com sucesso: ${this.state.clients.length} encontrados.`);
 
       if (this.state.clients.length > 0) {
         this.state.selectedClient = this.state.clients[0].name;
@@ -286,15 +260,12 @@ const App = {
         await this.loadClientData();
       } else {
         this.showLoader(false);
-        alert('Nenhuma pasta de cliente encontrada no Google Drive.');
+        this.log('WARNING', 'System', 'Nenhuma pasta de cliente ativa encontrada no Google Drive.');
       }
     } catch (err) {
       this.showLoader(false);
-      console.error(err);
-      alert(`Falha ao obter clientes: ${err.message}. Entrando em Modo Demo.`);
-      this.state.isDemoMode = true;
-      document.getElementById('demo-badge').classList.remove('hidden');
-      this.loadClients();
+      this.log('ERROR', 'System', `Falha ao obter clientes da VPS: ${err.message}`);
+      alert(`Falha ao obter clientes do servidor: ${err.message}`);
     }
   },
 
@@ -316,23 +287,29 @@ const App = {
   loadClientData: async function() {
     this.showLoader(true, `Carregando leads de ${this.state.selectedClient}...`);
     try {
-      if (this.state.isDemoMode) {
-        // Simular um atraso de rede suave para parecer realista e animar o loader
-        await new Promise(resolve => setTimeout(resolve, 800));
-        this.state.leads = MockData.generateLeads(this.state.selectedClient, 45); // Gerar últimos 45 dias
-      } else {
-        const activeOption = document.querySelector(`#select-client option[value="${this.state.selectedClient}"]`);
-        const clientId = activeOption.dataset.id;
-        this.state.leads = await DriveService.fetchClientLeads(clientId);
+      this.log('INFO', 'System', `Buscando leads do cliente '${this.state.selectedClient}' na planilha do Google Drive...`);
+      
+      const activeOption = document.querySelector(`#select-client option[value="${this.state.selectedClient}"]`);
+      const clientId = activeOption ? activeOption.dataset.id : '';
+      
+      const url = `/api/leads?clientId=${clientId}&clientName=${encodeURIComponent(this.state.selectedClient)}&demo=${this.state.isDemoMode}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `[Status ${response.status}] Falha ao buscar leads.`);
       }
+      
+      this.state.leads = await response.json();
+      this.log('SUCCESS', 'System', `Leads obtidos da planilha. Total de registros: ${this.state.leads.length}.`);
 
       this.state.currentPage = 1;
       this.applyFilters();
       this.showLoader(false);
     } catch (err) {
       this.showLoader(false);
-      console.error(err);
-      alert(`Erro ao ler planilha do cliente: ${err.message}`);
+      this.log('ERROR', 'System', `Erro ao buscar leads: ${err.message}`);
+      alert(`Erro ao ler planilha do cliente no servidor: ${err.message}`);
     }
   },
 
@@ -389,74 +366,52 @@ const App = {
       l.platform && (l.platform.includes('Meta') || l.platform.includes('Instagram'))
     ).length;
 
-    if (this.state.isDemoMode) {
-      // --- SIMULAÇÃO DE DEBUG E LOGS DA v25.0 DO META ADS ---
-      const simulatedAdAccount = localStorage.getItem('meta_ad_account_id') || 'act_77728399102';
+    this.log('INFO', 'System', `Consultando performance do Meta Ads na VPS (Período: ${dias} dias)...`);
+
+    try {
+      const url = `/api/meta-insights?days=${dias}&demo=${this.state.isDemoMode}`;
+      const response = await fetch(url);
       
-      this.log('INFO', 'Meta API v25.0', `Iniciando consulta para a conta ${simulatedAdAccount} - Período: últimos ${dias} dias`);
-      
-      // Simulando delay de rede e logs de breakdowns
-      await new Promise(resolve => setTimeout(resolve, 300));
-      this.log('INFO', 'Meta API v25.0', `GET https://graph.facebook.com/v25.0/${simulatedAdAccount}/insights?level=ad&time_range={"since":"...","until":"..."}&fields=ad_name,spend,clicks,impressions`);
-      this.log('SUCCESS', 'Meta API v25.0', 'Resposta recebida por Criativos (200 OK).');
-
-      await new Promise(resolve => setTimeout(resolve, 200));
-      this.log('INFO', 'Meta API v25.0', `GET https://graph.facebook.com/v25.0/${simulatedAdAccount}/insights?level=campaign&breakdowns=publisher_platform,device_platform&fields=spend,clicks,impressions`);
-      this.log('SUCCESS', 'Meta API v25.0', 'Resposta recebida por Plataforma/Dispositivo (200 OK).');
-
-      // Calcula custo simulado baseado em leads reais filtrados (R$ 14,50 por lead de média)
-      const simulatedCPL = 14.50;
-      const simulatedSpend = leadsMetaCount * simulatedCPL;
-
-      document.getElementById('kpi-meta-spend').textContent = `R$ ${simulatedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      document.getElementById('kpi-meta-cpl').innerHTML = `<span>CPL Médio: R$ ${simulatedCPL.toFixed(2)}</span>`;
-      
-      this.log('SUCCESS', 'Dashboard', `Custo cruzado: R$ ${simulatedSpend.toFixed(2)} investidos, gerando ${leadsMetaCount} leads via Meta. CPL: R$ ${simulatedCPL.toFixed(2)}`);
-    } else {
-      // --- CONSUMO REAL DA API DO META ---
-      const token = localStorage.getItem('meta_access_token');
-      const accountId = localStorage.getItem('meta_ad_account_id');
-
-      if (!token || !accountId) {
-        document.getElementById('kpi-meta-spend').textContent = 'Configurar';
-        document.getElementById('kpi-meta-cpl').innerHTML = '<span class="trend-down">Credenciais ausentes</span>';
-        this.log('WARNING', 'Dashboard', 'Consulta ao Meta Ads ignorada. Configure o Access Token e ID da Conta na aba Meta Ads para debugar.');
-        return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `[Status ${response.status}] Falha ao ler insights do Meta.`);
       }
 
-      this.log('INFO', 'Meta API v25.0', `Executando chamadas reais para a conta ${accountId}...`);
+      const data = await response.json();
 
-      try {
-        // Dispara requisições paralelas para criativos e campanhas
-        const [campaignInsights, creativeInsights] = await Promise.all([
-          MetaService.fetchCampaignPerformance(dias),
-          MetaService.fetchCreativePerformance(dias)
-        ]);
+      // 1. Renderiza logs retornados do servidor VPS no console visual do Dashboard
+      if (data.logs && data.logs.length > 0) {
+        data.logs.forEach(logItem => {
+          this.log(logItem.type, logItem.source, logItem.message);
+        });
+      }
 
-        // 1. Somar investimento total
-        let totalSpend = 0;
-        campaignInsights.forEach(item => {
+      // 2. Processar investimento total
+      let totalSpend = 0;
+      
+      if (this.state.isDemoMode) {
+        // No modo Demo, calcula custo simulado e exibe
+        totalSpend = data.spend || (leadsMetaCount * 14.50);
+      } else if (data.campaigns) {
+        // No modo Real, soma o spend de todas as campanhas retornadas da Marketing API
+        data.campaigns.forEach(item => {
           totalSpend += parseFloat(item.spend || 0);
         });
-
-        // 2. Calcular CPL
-        const cpl = leadsMetaCount > 0 ? (totalSpend / leadsMetaCount) : 0;
-
-        // 3. Atualizar UI
-        document.getElementById('kpi-meta-spend').textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        document.getElementById('kpi-meta-cpl').innerHTML = `<span>CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
-        
-        this.log('SUCCESS', 'Dashboard', `Métricas integradas! Total Gasto: R$ ${totalSpend.toFixed(2)}. CPL do período: R$ ${cpl.toFixed(2)}.`);
-
-        // Aqui você pode atualizar gráficos de UTM criativos com os custos reais extraídos do creativeInsights
-        if (creativeInsights && creativeInsights.length > 0) {
-          this.log('INFO', 'Meta API v25.0', 'Mesclando performance de criativos nos gráficos...');
-        }
-      } catch (err) {
-        document.getElementById('kpi-meta-spend').textContent = 'Erro API';
-        document.getElementById('kpi-meta-cpl').innerHTML = `<span class="trend-down" title="${err.message}">Falha no carregamento</span>`;
-        this.log('ERROR', 'Dashboard', `Falha ao processar dados do Meta: ${err.message}`);
       }
+
+      // 3. Calcular CPL médio
+      const cpl = leadsMetaCount > 0 ? (totalSpend / leadsMetaCount) : 0;
+
+      // 4. Atualizar UI
+      document.getElementById('kpi-meta-spend').textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('kpi-meta-cpl').innerHTML = `<span>CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+      
+      this.log('SUCCESS', 'Dashboard', `Cálculo concluído: R$ ${totalSpend.toFixed(2)} investidos, CPL médio de R$ ${cpl.toFixed(2)}.`);
+
+    } catch (err) {
+      document.getElementById('kpi-meta-spend').textContent = 'Erro VPS';
+      document.getElementById('kpi-meta-cpl').innerHTML = `<span class="trend-down" title="${err.message}">Falha no carregamento</span>`;
+      this.log('ERROR', 'Dashboard', `Falha ao carregar dados do Meta da VPS: ${err.message}`);
     }
   },
 

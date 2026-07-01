@@ -37,20 +37,31 @@
 
       <p class="login-desc">Analise os leads de tráfego pago de todos os clientes da sua agência integrados diretamente com o Google Drive.</p>
 
-      <div class="login-actions">
-        <button id="btn-login-google" class="btn btn-google">
-          <i class="fa-brands fa-google btn-icon"></i>
-          <span>Entrar com o Google</span>
-        </button>
-        
-        <button id="btn-login-demo" class="btn btn-secondary">
-          <i class="fa-solid fa-flask btn-icon"></i>
-          <span>Acessar Modo Demo (Dados Simulados)</span>
-        </button>
+      <div class="login-form">
+        <div class="form-group margin-bottom-16" style="text-align: left; margin-bottom: 16px;">
+          <label for="input-username" style="font-size: 0.85rem; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary);">Usuário:</label>
+          <input type="text" id="input-username" placeholder="Usuário da VPS" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: #fff; padding: 10px 14px; border-radius: 8px; width: 100%; outline: none;">
+        </div>
+        <div class="form-group margin-bottom-16" style="text-align: left; margin-bottom: 24px;">
+          <label for="input-password" style="font-size: 0.85rem; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary);">Senha:</label>
+          <input type="password" id="input-password" placeholder="Senha do painel" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: #fff; padding: 10px 14px; border-radius: 8px; width: 100%; outline: none;">
+        </div>
+
+        <div class="login-actions" style="display: flex; flex-direction: column; gap: 12px;">
+          <button id="btn-login-submit" class="btn btn-primary-login" style="background: var(--primary-gradient); color: #070913; width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.25);">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            <span>Acessar Painel</span>
+          </button>
+          
+          <button id="btn-login-demo" class="btn btn-secondary">
+            <i class="fa-solid fa-flask btn-icon"></i>
+            <span>Acessar Modo Demo (Dados Fictícios)</span>
+          </button>
+        </div>
       </div>
       
       <div class="login-footer">
-        <p><i class="fa-solid fa-shield-halved"></i> Conexão segura ponta a ponta via OAuth2</p>
+        <p><i class="fa-solid fa-shield-halved"></i> Autenticação segura server-side na VPS</p>
       </div>
     </div>
   </div>
@@ -318,55 +329,49 @@
   <div id="settings-modal" class="modal-overlay">
     <div class="modal-card modal-lg glass-panel animate-fade-in">
       <div class="modal-header">
-        <h3>Painel de Integrações & Logs</h3>
+        <h3>Painel de Controle VPS & Logs</h3>
         <button id="btn-close-modal" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
       </div>
       
       <div class="modal-tabs">
-        <button class="modal-tab-btn active" data-tab="tab-drive">Google Drive</button>
-        <button class="modal-tab-btn" data-tab="tab-meta">Meta Ads API (v25.0)</button>
+        <button class="modal-tab-btn active" data-tab="tab-status">Status das Integrações</button>
         <button class="modal-tab-btn" data-tab="tab-logs">Console de Logs (<span id="log-count">0</span>)</button>
       </div>
 
       <div class="modal-body">
-        <!-- Aba Google Drive -->
-        <div id="tab-drive" class="modal-tab-content active">
-          <p class="modal-desc">Configure o acesso ao Google Drive informando as credenciais de autenticação e ID da pasta raiz.</p>
+        <!-- Aba Status -->
+        <div id="tab-status" class="modal-tab-content active">
+          <p class="modal-desc">Todas as credenciais sensíveis estão salvas como variáveis de ambiente (.env) de forma segura na sua VPS.</p>
           
-          <div class="form-group margin-bottom-16">
-            <label for="input-google-client-id">Google Client ID (OAuth):</label>
-            <input type="text" id="input-google-client-id" placeholder="Digite seu Client ID do Google Cloud">
-            <small>Gerado no Google Cloud Console > Credenciais > ID do Cliente OAuth (ex: 12345...apps.googleusercontent.com)</small>
-          </div>
+          <div class="status-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+            <div class="status-item glass-panel" style="padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.1);">
+              <h4 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+                <i class="fa-brands fa-google"></i> Google Drive & Sheets
+              </h4>
+              <ul style="list-style: none; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; color: var(--text-secondary);">
+                <li>Client ID: <span style="color: var(--success);">Injetado (.env)</span></li>
+                <li>Folder ID: <span style="color: var(--success);">Configurado</span></li>
+                <li>Status: <span class="badge badge-platform" style="padding: 2px 6px; font-size: 0.7rem;">Ativo (Server-Side)</span></li>
+              </ul>
+            </div>
 
-          <div class="form-group">
-            <label for="input-folder-id">ID da Pasta Raiz "Clientes":</label>
-            <input type="text" id="input-folder-id" placeholder="Digite o ID da pasta do Drive">
-            <small>O ID no final da URL da pasta no seu navegador (ex: drive.google.com/drive/folders/<strong>ID_AQUI</strong>)</small>
-          </div>
-        </div>
-
-        <!-- Aba Meta Ads -->
-        <div id="tab-meta" class="modal-tab-content">
-          <p class="modal-desc">Configure a chave de acesso do Meta para carregar os dados de Custo, Cliques e Impressões em tempo real.</p>
-          
-          <div class="form-group margin-bottom-16">
-            <label for="input-meta-token">Meta Access Token (Token do Usuário do Sistema):</label>
-            <input type="password" id="input-meta-token" placeholder="EAAW...">
-            <small>Insira o Token permanente gerado no painel do Meta Business Suite > Configurações do Negócio > Desenvolvedores.</small>
-          </div>
-
-          <div class="form-group">
-            <label for="input-meta-account">ID da Conta de Anúncios (Ad Account ID):</label>
-            <input type="text" id="input-meta-account" placeholder="act_1234567890">
-            <small>ID da conta de anúncios que será consultada para obter os dados de custo das campanhas.</small>
+            <div class="status-item glass-panel" style="padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.1);">
+              <h4 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--accent-2); display: flex; align-items: center; gap: 8px;">
+                <i class="fa-brands fa-facebook"></i> Meta Ads Marketing
+              </h4>
+              <ul style="list-style: none; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; color: var(--text-secondary);">
+                <li>Ad Account ID: <span style="color: var(--success);">Injetado (.env)</span></li>
+                <li>API Version: <span style="font-weight: bold;">v25.0</span></li>
+                <li>Status: <span class="badge badge-device" style="padding: 2px 6px; font-size: 0.7rem; background: rgba(249, 115, 22, 0.1); color: var(--accent-2); border-color: rgba(249,115,22,0.15);">Ativo (Server-Side)</span></li>
+              </ul>
+            </div>
           </div>
         </div>
 
         <!-- Aba Console de Logs -->
         <div id="tab-logs" class="modal-tab-content">
           <div class="logs-header-actions">
-            <p class="modal-desc">Histórico de requisições e processamento em tempo real para depuração.</p>
+            <p class="modal-desc">Logs de processamento e requisições HTTP da VPS em tempo real.</p>
             <button id="btn-clear-logs" class="btn-clear-logs-btn"><i class="fa-solid fa-trash-can"></i> Limpar Logs</button>
           </div>
           <div class="log-console-container">
@@ -378,23 +383,19 @@
       </div>
 
       <div class="modal-footer">
-        <button id="btn-save-settings" class="btn btn-primary">Salvar e Atualizar</button>
+        <button id="btn-reload-dashboard" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-rotate"></i> Recarregar Dados
+        </button>
       </div>
     </div>
   </div>
 
   <!-- SCRIPTS CDN -->
-  <!-- Google Sign-In SDK (Google Identity Services) -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  
   <!-- ApexCharts CDN -->
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
   <!-- SCRIPTS DA APLICAÇÃO -->
   <script src="js/mockData.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/driveService.js"></script>
-  <script src="js/metaService.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>
 </body>

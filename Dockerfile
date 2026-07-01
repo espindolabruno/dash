@@ -1,11 +1,24 @@
-# Usar a imagem oficial e ultra-leve do Nginx baseada em Alpine Linux
-FROM nginx:alpine
+# Usar a imagem leve oficial do Node.js
+FROM node:18-alpine
 
-# Copiar os arquivos estáticos do projeto para o diretório raiz do Nginx
-COPY . /usr/share/nginx/html
+# Definir diretório de trabalho no container
+WORKDIR /app
 
-# Expor a porta 80 do container
-EXPOSE 80
+# Copiar os arquivos de definição de dependências
+COPY package*.json ./
 
-# Iniciar o servidor Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Instalar dependências de produção
+RUN npm install --production
+
+# Copiar todo o código-fonte para o container
+COPY . .
+
+# Expor a porta que o Express está configurado para escutar
+EXPOSE 3000
+
+# Variáveis padrão de produção
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Comando para iniciar o servidor
+CMD ["node", "server.js"]
