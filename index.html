@@ -301,6 +301,136 @@
         </div>
       </section>
 
+      <!-- SEÇÃO ESPECIAL: AUDITORIA E RAIO-X META ADS -->
+      <section class="meta-audit-section glass-panel animate-fade-in" style="margin-bottom: 24px; padding: 24px;">
+        <div class="section-header-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="meta-logo-icon" style="background: rgba(24, 119, 242, 0.1); width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid rgba(24, 119, 242, 0.2);">
+              <i class="fa-brands fa-facebook" style="color: #1877F2; font-size: 1.4rem;"></i>
+            </div>
+            <div>
+              <h3 class="chart-title" style="font-size: 1.25rem; font-weight: 700; margin: 0;">Auditoria & Raio-X Meta Ads</h3>
+              <p class="chart-subtitle" style="margin: 2px 0 0 0;">Análise detalhada de campanhas, conjuntos de anúncios e criativos integrados ao funil e estados</p>
+            </div>
+          </div>
+          <button id="btn-clear-meta-filters" class="btn-action hidden" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 8px 16px; border-radius: var(--border-radius-md); font-weight: 600; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <i class="fa-solid fa-filter-circle-xmark"></i> Limpar Filtro de Seleção
+          </button>
+        </div>
+
+        <!-- Linha de KPIs de Auditoria Meta -->
+        <div class="meta-kpis-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Investimento Meta</span>
+            <span class="meta-kpi-val" id="meta-audit-spend" style="font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 8px;">R$ 0,00</span>
+          </div>
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Conversas Iniciadas</span>
+            <span class="meta-kpi-val" id="meta-audit-conversations" style="font-size: 1.4rem; font-weight: 700; color: var(--primary); margin-top: 8px;">0</span>
+          </div>
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">CPA de Conversa</span>
+            <span class="meta-kpi-val" id="meta-audit-cpa" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-2); margin-top: 8px;">R$ 0,00</span>
+          </div>
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Alcance (Reach)</span>
+            <span class="meta-kpi-val" id="meta-audit-reach" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-1); margin-top: 8px;">0</span>
+          </div>
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Seguidores Gerados</span>
+            <span class="meta-kpi-val" id="meta-audit-followers" style="font-size: 1.4rem; font-weight: 700; color: var(--success); margin-top: 8px;">0</span>
+          </div>
+        </div>
+
+        <!-- Primeira Fileira: Explorer Table & Funil SVG/CSS -->
+        <div class="meta-audit-row-1" style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; margin-bottom: 24px;">
+          <!-- Tabela Exploradora -->
+          <div class="meta-explorer-panel glass-panel" style="padding: 20px; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01);">
+            <div class="explorer-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+              <div class="explorer-tabs" style="display: flex; gap: 4px; background: rgba(0,0,0,0.2); padding: 4px; border-radius: var(--border-radius-md); border: 1px solid rgba(255,255,255,0.04);">
+                <button class="explorer-tab-btn active" data-level="campaign" style="background: transparent; color: var(--text-secondary); border: none; padding: 6px 14px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">Campanhas</button>
+                <button class="explorer-tab-btn" data-level="adset" style="background: transparent; color: var(--text-secondary); border: none; padding: 6px 14px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">Conjuntos</button>
+                <button class="explorer-tab-btn" data-level="creative" style="background: transparent; color: var(--text-secondary); border: none; padding: 6px 14px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">Criativos</button>
+              </div>
+              <div class="explorer-search search-box" style="margin: 0; min-width: 180px; width: auto; flex-grow: 0;">
+                <i class="fa-solid fa-magnifying-glass search-icon" style="top: 10px; left: 12px; font-size: 0.8rem;"></i>
+                <input type="text" id="explorer-search-input" placeholder="Filtrar..." style="padding: 8px 12px 8px 32px; font-size: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; color: #fff; outline: none;">
+              </div>
+            </div>
+            
+            <div class="explorer-table-wrapper" style="overflow-x: auto; max-height: 300px;">
+              <table class="explorer-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.8rem;">
+                <thead>
+                  <tr id="explorer-table-header" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                    <!-- Populado via JS -->
+                  </tr>
+                </thead>
+                <tbody id="explorer-table-body">
+                  <!-- Populado via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Funil SVG/CSS Dinâmico -->
+          <div class="meta-funnel-panel glass-panel" style="padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01); display: flex; flex-direction: column;">
+            <h4 class="chart-title" style="font-size: 0.95rem; font-weight: 600; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-filter" style="color: var(--primary); filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.3));"></i>
+              Funil de Vendas Ponta a Ponta
+            </h4>
+            <div class="funnel-container" id="funnel-container" style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+              <!-- Desenhado dinamicamente por JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Segunda Fileira: Regiões (Cliques vs Conversas) & Distribuição de Plataformas -->
+        <div class="meta-audit-row-2" style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px;">
+          <!-- Gráfico de Estados & Tabela de Estados -->
+          <div class="meta-regions-panel glass-panel" style="padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01); display: flex; flex-direction: column;">
+            <h4 class="chart-title" style="font-size: 0.95rem; font-weight: 600; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-map-location-dot" style="color: var(--accent-2); filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.3));"></i>
+              Auditoria Geográfica (Cliques vs. Conversas por Estado)
+            </h4>
+            <div class="regions-content" style="display: flex; flex-direction: column; gap: 20px;">
+              <div id="chart-regions-comparison" style="min-height: 250px; width: 100%;"></div>
+              
+              <div class="regions-table-wrapper" style="overflow-x: auto; max-height: 300px; width: 100%;">
+                <table class="regions-table-data" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.76rem;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary);">
+                      <th style="padding: 6px 4px;">Estado</th>
+                      <th style="padding: 6px 4px; text-align: right;">Investido</th>
+                      <th style="padding: 6px 4px; text-align: right;">Cliques</th>
+                      <th style="padding: 6px 4px; text-align: right;">Resultados (Meta)</th>
+                      <th style="padding: 6px 4px; text-align: right;">Conversas (CRM)</th>
+                      <th style="padding: 6px 4px; text-align: right;">Leads (CRM)</th>
+                      <th style="padding: 6px 4px; text-align: right;">Custo/Conversa</th>
+                      <th style="padding: 6px 4px; text-align: right;">Seguidores</th>
+                      <th style="padding: 6px 4px; text-align: right;">Custo/Seguidor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="regions-table-body">
+                    <!-- Dinâmico via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Distribuição por Plataforma -->
+          <div class="meta-platforms-panel glass-panel" style="padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01); display: flex; flex-direction: column;">
+            <h4 class="chart-title" style="font-size: 0.95rem; font-weight: 600; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-chart-pie" style="color: var(--accent-1); filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.3));"></i>
+              Canais do Meta (Instagram vs Facebook)
+            </h4>
+            <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 230px;">
+              <div id="chart-meta-platforms" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- LINHA 4: HEATMAP E TABELA DE LEADS -->
       <section class="bottom-section">
         <!-- Mapa de Calor de Conversão (Dia e Hora) -->

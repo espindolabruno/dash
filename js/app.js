@@ -16,7 +16,15 @@ const App = {
     activeUtmTab: 'creative',
     metaAccounts: [],
     filteredMetaAccounts: [],
-    mappedMetaAccount: null
+    mappedMetaAccount: null,
+    
+    // Novas chaves para a Auditoria Meta Ads
+    metaData: null,
+    explorerLevel: 'campaign', // campaign, adset, creative
+    explorerSearch: '',
+    selectedMetaCampaignId: null,
+    selectedMetaAdsetId: null,
+    selectedMetaAdId: null
   },
   logCount: 0,
 
@@ -386,6 +394,26 @@ const App = {
       }
       this.renderMetaAccountsGrid();
     });
+
+    // --- OUVINTES DO EXPLORER DA AUDITORIA META ADS ---
+    const explorerTabs = document.querySelectorAll('.explorer-tab-btn');
+    explorerTabs.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        explorerTabs.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        this.state.explorerLevel = e.target.dataset.level;
+        this.renderExplorerTable();
+      });
+    });
+
+    document.getElementById('explorer-search-input').addEventListener('input', (e) => {
+      this.state.explorerSearch = e.target.value.toLowerCase().trim();
+      this.renderExplorerTable();
+    });
+
+    document.getElementById('btn-clear-meta-filters').addEventListener('click', () => {
+      this.clearMetaFilters();
+    });
   },
 
   // Entra na tela do dashboard e carrega os clientes
@@ -530,6 +558,14 @@ const App = {
           instagram: data.instagram_username
         };
         this.log('INFO', 'System', `Mapeamento Meta Ads ativo: Conta '${data.meta_ad_account_name}' (${data.instagram_username}).`);
+      } else if (this.state.isDemoMode) {
+        banner.classList.add('hidden');
+        this.state.mappedMetaAccount = {
+          id: 'act_77728399102',
+          name: `${this.state.selectedClient} (Meta Demo)`,
+          instagram: `@${this.state.selectedClient.toLowerCase().replace(/\s+/g, '')}`
+        };
+        this.log('INFO', 'System', `Mapeamento Meta Ads ativo (Modo Demo): Conta '${this.state.selectedClient} (Meta Demo)'.`);
       } else {
         banner.classList.remove('hidden');
         this.state.mappedMetaAccount = null;
@@ -782,16 +818,24 @@ const App = {
 
   // Consulta o Meta Ads v25.0 (ou simula requisições de debug no modo demo) e calcula o Custo por Lead
   fetchAndMergeMetaAds: async function() {
-    const leadsMetaCount = this.state.filteredLeads.filter(l => 
+    const leadsMetaCount = this.state.leads.filter(l => 
       l.platform && (l.platform.includes('Meta') || l.platform.includes('Instagram'))
     ).length;
 
     // Se o cliente não possuir conta associada
     if (!this.state.mappedMetaAccount) {
-      document.getElementById('kpi-meta-spend').textContent = 'Sem Vínculo';
-      document.getElementById('kpi-meta-cpl').innerHTML = '<span>Associe uma conta do FB</span>';
-      this.log('WARNING', 'Dashboard', 'Leitura do Meta ignorada: Nenhuma conta vinculada a este cliente.');
-      return;
+      if (this.state.isDemoMode) {
+        this.state.mappedMetaAccount = {
+          id: 'act_77728399102',
+          name: `${this.state.selectedClient} (Meta Demo)`,
+          instagram: `@${this.state.selectedClient.toLowerCase().replace(/\s+/g, '')}`
+        };
+      } else {
+        document.getElementById('kpi-meta-spend').textContent = 'Sem Vínculo';
+        document.getElementById('kpi-meta-cpl').innerHTML = '<span>Associe uma conta do FB</span>';
+        this.log('WARNING', 'Dashboard', 'Leitura do Meta ignorada: Nenhuma conta vinculada a este cliente.');
+        return;
+      }
     }
 
     const accountId = this.state.mappedMetaAccount.id;
@@ -800,7 +844,7 @@ const App = {
     this.log('INFO', 'System', `Consultando performance do Meta Ads na VPS para '${accountName}' (ID: ${accountId})...`);
 
     try {
-      let url = `/api/meta-insights?accountId=${accountId}&demo=${this.state.isDemoMode}`;
+      let url = `/api/meta-insights?accountId=${accountId}&demo=${this.state.isDemoMode}&clientName=${encodeURIComponent(this.state.selectedClient)}`;
       if (this.state.startDate && this.state.endDate) {
         const formatDate = (date) => date.toISOString().substring(0, 10);
         url += `&startDate=${formatDate(this.state.startDate)}&endDate=${formatDate(this.state.endDate)}`;
@@ -823,24 +867,28 @@ const App = {
         });
       }
 
-      // 2. Processar investimento total
+      // 2. Salva os dados brutos no estado
+      this.state.metaData = data;
+
+      // 3. Processar investimento total
       let totalSpend = 0;
-      
-      if (this.state.isDemoMode) {
-        totalSpend = data.spend || (leadsMetaCount * 14.50);
-      } else if (data.campaigns) {
+      if (data.campaigns) {
         data.campaigns.forEach(item => {
           totalSpend += parseFloat(item.spend || 0);
         });
       }
 
-      // 3. Calcular CPL médio
+      // 4. Calcular CPL médio (Investimento total Meta / Leads locais do Meta)
       const cpl = leadsMetaCount > 0 ? (totalSpend / leadsMetaCount) : 0;
 
-      // 4. Atualizar UI
+      // 5. Atualizar UI dos cards de topo
       document.getElementById('kpi-meta-spend').textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       document.getElementById('kpi-meta-cpl').innerHTML = `<span title="${accountName}">CPL: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
       
+      // 6. Atualizar a tabela exploradora e os gráficos de auditoria Meta
+      this.renderExplorerTable();
+      this.updateMetaAuditCharts();
+
       this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos, CPL: R$ ${cpl.toFixed(2)}.`);
 
     } catch (err) {
@@ -1206,6 +1254,265 @@ const App = {
     } catch (err) {
       console.error("Erro ao verificar status do Google Drive:", err);
     }
+  },
+
+  // Renderiza a tabela exploradora de breakdowns do Meta
+  renderExplorerTable: function() {
+    const tableHeader = document.getElementById('explorer-table-header');
+    const tableBody = document.getElementById('explorer-table-body');
+    if (!tableHeader || !tableBody) return;
+
+    const level = this.state.explorerLevel || 'campaign';
+    const query = this.state.explorerSearch || '';
+
+    let headersHtml = '';
+    let dataRows = [];
+
+    let levelLabel = 'Campanha';
+    if (level === 'adset') levelLabel = 'Conjunto de Anúncios';
+    else if (level === 'creative') levelLabel = 'Criativo (Anúncio)';
+
+    headersHtml = `
+      <th style="padding: 10px 12px;">${levelLabel}</th>
+      <th style="padding: 10px 12px; text-align: right;">Investido</th>
+      <th style="padding: 10px 12px; text-align: right;">Cliques</th>
+      <th style="padding: 10px 12px; text-align: right;">Resultados</th>
+      <th style="padding: 10px 12px; text-align: right;">Conversas</th>
+      <th style="padding: 10px 12px; text-align: right;">Seguidores</th>
+      <th style="padding: 10px 12px; text-align: right;">Custo por Lead</th>
+      <th style="padding: 10px 12px; text-align: right;">Custo/Seguidor</th>
+    `;
+
+    if (level === 'campaign') {
+      dataRows = this.state.metaData ? (this.state.metaData.campaigns || []) : [];
+    } else if (level === 'adset') {
+      dataRows = this.state.metaData ? (this.state.metaData.adsets || []) : [];
+    } else {
+      dataRows = this.state.metaData ? (this.state.metaData.creatives || []) : [];
+    }
+
+    tableHeader.innerHTML = headersHtml;
+
+    if (query) {
+      dataRows = dataRows.filter(row => {
+        const name = (row.campaign_name || row.adset_name || row.ad_name || '').toLowerCase();
+        return name.includes(query);
+      });
+    }
+
+    if (dataRows.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--text-secondary);">Nenhum registro encontrado.</td></tr>`;
+      return;
+    }
+
+    let tbodyHtml = '';
+    dataRows.forEach(row => {
+      let isSelected = false;
+      let rowId = '';
+      let displayName = '';
+      let subName = '';
+
+      if (level === 'campaign') {
+        rowId = row.campaign_id;
+        displayName = row.campaign_name;
+        isSelected = this.state.selectedMetaCampaignId === rowId;
+      } else if (level === 'adset') {
+        rowId = row.adset_id;
+        displayName = row.adset_name;
+        subName = row.campaign_name;
+        isSelected = this.state.selectedMetaAdsetId === rowId;
+      } else {
+        rowId = row.ad_id;
+        displayName = row.ad_name;
+        subName = row.adset_name;
+        isSelected = this.state.selectedMetaAdId === rowId;
+      }
+
+      // Filtrar as leads locais do CRM para calcular a conversão real na planilha
+      let crmLeadsCount = 0;
+      if (level === 'campaign') {
+        crmLeadsCount = this.state.leads.filter(l => 
+          l.campaign && l.campaign.toLowerCase() === displayName.toLowerCase()
+        ).length;
+      } else if (level === 'adset') {
+        crmLeadsCount = this.state.leads.filter(l => 
+          l.adset && l.adset.toLowerCase() === displayName.toLowerCase()
+        ).length;
+      } else {
+        const cleanAdName = displayName.replace(/\s*\[V\d+\]$/, '').toLowerCase();
+        crmLeadsCount = this.state.leads.filter(l => 
+          l.creative && (l.creative.toLowerCase() === displayName.toLowerCase() || l.creative.toLowerCase() === cleanAdName)
+        ).length;
+      }
+
+      const cpl = crmLeadsCount > 0 ? (row.spend / crmLeadsCount) : 0;
+      const cps = row.seguidores > 0 ? (row.spend / row.seguidores) : 0;
+
+      const formattedSpend = 'R$ ' + row.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const formattedCpl = crmLeadsCount > 0 
+        ? 'R$ ' + cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+      const formattedCps = row.seguidores > 0 
+        ? 'R$ ' + cps.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+
+      const conversasCell = `${row.conversas} (${crmLeadsCount})`;
+
+      tbodyHtml += `
+        <tr class="${isSelected ? 'selected-row' : ''}" data-id="${rowId}">
+          <td style="padding: 10px 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <div style="font-weight: 600; color: #fff;">${displayName}</div>
+            ${subName ? `<div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px;">${subName}</div>` : ''}
+          </td>
+          <td style="padding: 10px 12px; text-align: right;">${formattedSpend}</td>
+          <td style="padding: 10px 12px; text-align: right;">${row.clicks.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--primary);">${row.conversas.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--primary);">${conversasCell}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--success);">${row.seguidores.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px 12px; text-align: right;">${formattedCpl}</td>
+          <td style="padding: 10px 12px; text-align: right;">${formattedCps}</td>
+        </tr>
+      `;
+    });
+
+    tableBody.innerHTML = tbodyHtml;
+
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(r => {
+      r.addEventListener('click', (e) => {
+        const id = r.dataset.id;
+        if (!id) return;
+        this.selectMetaRow(id);
+      });
+    });
+  },
+
+  // Gerencia clique em uma linha da tabela exploradora
+  selectMetaRow: function(id) {
+    const level = this.state.explorerLevel;
+
+    if (level === 'campaign') {
+      if (this.state.selectedMetaCampaignId === id) {
+        this.state.selectedMetaCampaignId = null;
+      } else {
+        this.state.selectedMetaCampaignId = id;
+      }
+      this.state.selectedMetaAdsetId = null;
+      this.state.selectedMetaAdId = null;
+    } else if (level === 'adset') {
+      if (this.state.selectedMetaAdsetId === id) {
+        this.state.selectedMetaAdsetId = null;
+      } else {
+        this.state.selectedMetaAdsetId = id;
+        const adset = (this.state.metaData.adsets || []).find(a => a.adset_id === id);
+        if (adset) this.state.selectedMetaCampaignId = adset.campaign_id;
+      }
+      this.state.selectedMetaAdId = null;
+    } else {
+      if (this.state.selectedMetaAdId === id) {
+        this.state.selectedMetaAdId = null;
+      } else {
+        this.state.selectedMetaAdId = id;
+        const creative = (this.state.metaData.creatives || []).find(c => c.ad_id === id);
+        if (creative) {
+          this.state.selectedMetaAdsetId = creative.adset_id;
+          this.state.selectedMetaCampaignId = creative.campaign_id;
+        }
+      }
+    }
+
+    const clearBtn = document.getElementById('btn-clear-meta-filters');
+    if (this.state.selectedMetaCampaignId || this.state.selectedMetaAdsetId || this.state.selectedMetaAdId) {
+      clearBtn.classList.remove('hidden');
+    } else {
+      clearBtn.classList.add('hidden');
+    }
+
+    this.renderExplorerTable();
+    this.updateMetaAuditCharts();
+    this.syncCrmLeadsFilter();
+  },
+
+  // Dispara atualização nos gráficos da seção de Auditoria
+  updateMetaAuditCharts: function() {
+    ChartsManager.updateMetaAudit(
+      this.state.metaData,
+      this.state.selectedMetaCampaignId,
+      this.state.selectedMetaAdsetId,
+      this.state.selectedMetaAdId,
+      this.state.leads
+    );
+  },
+
+  // Limpa todos os filtros ativos do Meta Ads
+  clearMetaFilters: function() {
+    this.state.selectedMetaCampaignId = null;
+    this.state.selectedMetaAdsetId = null;
+    this.state.selectedMetaAdId = null;
+
+    document.getElementById('btn-clear-meta-filters').classList.add('hidden');
+
+    this.renderExplorerTable();
+    this.updateMetaAuditCharts();
+    this.syncCrmLeadsFilter();
+  },
+
+  // Sincroniza o filtro com as leads locais do CRM (tabela inferior e outros gráficos)
+  syncCrmLeadsFilter: function() {
+    let campaignName = null;
+    let adsetName = null;
+    let creativeName = null;
+
+    if (this.state.selectedMetaCampaignId && this.state.metaData) {
+      const camp = (this.state.metaData.campaigns || []).find(c => c.campaign_id === this.state.selectedMetaCampaignId);
+      if (camp) campaignName = camp.campaign_name.toLowerCase();
+    }
+    if (this.state.selectedMetaAdsetId && this.state.metaData) {
+      const adset = (this.state.metaData.adsets || []).find(a => a.adset_id === this.state.selectedMetaAdsetId);
+      if (adset) adsetName = adset.adset_name.toLowerCase();
+    }
+    if (this.state.selectedMetaAdId && this.state.metaData) {
+      const ad = (this.state.metaData.creatives || []).find(c => c.ad_id === this.state.selectedMetaAdId);
+      if (ad) creativeName = ad.ad_name.toLowerCase();
+    }
+
+    let leadsToFilter = [...this.state.leads];
+
+    if (this.state.startDate && this.state.endDate) {
+      leadsToFilter = leadsToFilter.filter(lead => {
+        const leadDate = window.parseDateSafe(lead.date);
+        return leadDate && leadDate >= this.state.startDate && leadDate <= this.state.endDate;
+      });
+    }
+
+    if (campaignName) {
+      leadsToFilter = leadsToFilter.filter(l => l.campaign && l.campaign.toLowerCase() === campaignName);
+    }
+    if (adsetName) {
+      leadsToFilter = leadsToFilter.filter(l => l.adset && l.adset.toLowerCase() === adsetName);
+    }
+    if (creativeName) {
+      const cleanCreativeName = creativeName.replace(/\s*\[v\d+\]$/, '');
+      leadsToFilter = leadsToFilter.filter(l => l.creative && (l.creative.toLowerCase() === creativeName || l.creative.toLowerCase() === cleanCreativeName));
+    }
+
+    if (this.state.searchQuery) {
+      leadsToFilter = leadsToFilter.filter(lead => {
+        return (
+          (lead.name && lead.name.toLowerCase().includes(this.state.searchQuery)) ||
+          (lead.phone && lead.phone.includes(this.state.searchQuery)) ||
+          (lead.phase && lead.phase.toLowerCase().includes(this.state.searchQuery))
+        );
+      });
+    }
+
+    this.state.filteredLeads = leadsToFilter;
+    this.updateKPIs();
+    
+    ChartsManager.updateCharts(this.state.filteredLeads);
+    ChartsManager.updateUtmRanking(this.state.filteredLeads, this.state.activeUtmTab);
+    
+    this.renderTable();
   }
 };
 

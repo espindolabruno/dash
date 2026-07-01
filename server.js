@@ -422,7 +422,7 @@ app.get('/api/leads', async (req, res) => {
 
 // 4. Rota de Proxy da API do Meta Ads (Marketing API v25.0)
 app.get('/api/meta-insights', async (req, res) => {
-  const { days, demo, accountId, startDate, endDate } = req.query;
+  const { days, demo, accountId, startDate, endDate, clientName } = req.query;
   const isDemo = demo === 'true';
   const limitDays = days ? parseInt(days) : 30;
 
@@ -430,24 +430,235 @@ app.get('/api/meta-insights', async (req, res) => {
   let actId = accountId || process.env.META_AD_ACCOUNT_ID;
 
   if (isDemo) {
-    // Retorna logs e dados simulados para a UI
     const targetAccount = actId || 'act_77728399102';
+    const client = clientName || 'AgroForte Sementes';
+
+    // Calcular escala de dias com base no intervalo de datas selecionado (base original de 90 dias)
+    let rangeDays = limitDays;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const diffTime = Math.abs(end - start);
+      rangeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+    }
+    const dateScale = rangeDays / 90;
+    
+    // Configurações por cliente (mantendo consistência com js/mockData.js)
+    const config = {
+      "AgroForte Sementes": {
+        campanhas: ["Lançamento Soja 2026", "Institucional AgroForte", "Oferta Sementes Milho"],
+        conjuntos: ["Interesses Produtores", "Lookalike Clientes", "Palavras-Chave Soja"],
+        criativos: ["Video_Depoimento_Produtor", "Banner_Saco_Semente", "Carrossel_Beneficios_Milho"],
+        baseCampId: 100100
+      },
+      "NutriCampo Fertilizantes": {
+        campanhas: ["Nutrição de Solo Inverno", "Fertilizantes Foliares NPK", "Geração de Leads B2B"],
+        conjuntos: ["Decisores Agro", "Palavras Fertilizantes NPK", "Público Engenheiros Agrônomos"],
+        criativos: ["Infografico_Nutrientes_Solo", "Video_Resultados_Lavoura", "Banner_Frete_Gratis"],
+        baseCampId: 200200
+      },
+      "Tratores Connect": {
+        campanhas: ["Feirão Tratores Connect", "Consórcio Agrícola 2026", "Peças e Serviços"],
+        conjuntos: ["Público Feiras Agrícolas", "Palavras Compra Trator", "Lista WhatsApp Importada"],
+        criativos: ["Video_Demonstracao_Trator_XP", "Foto_Feirao_Descontos", "Carrossel_Modelos_Tratores"],
+        baseCampId: 300300
+      }
+    };
+
+    const c = config[client] || config["AgroForte Sementes"];
+
+    // 1. Gerar Campanhas com dados de investimento escalados por data
+    const mockCampaigns = c.campanhas.map((campName, i) => {
+      const campId = String(c.baseCampId + i);
+      const spend = (400 + i * 200 + Math.random() * 50) * dateScale;
+      const impressions = Math.floor(spend * 50 + (Math.random() * 1000) * dateScale);
+      const clicks = Math.floor(impressions * (0.015 + i * 0.005));
+      const reach = Math.floor(impressions * 0.85);
+      const conversas = Math.floor(clicks * (0.08 + i * 0.03));
+      const seguidores = Math.floor(clicks * 0.05);
+
+      return {
+        campaign_id: campId,
+        campaign_name: campName,
+        spend: parseFloat(spend.toFixed(2)),
+        impressions,
+        clicks,
+        reach,
+        conversas,
+        seguidores,
+        actions: [
+          { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
+          { action_type: 'page_like', value: String(seguidores) }
+        ]
+      };
+    });
+
+    // 2. Gerar Conjuntos (Ad Sets) para cada campanha
+    const mockAdsets = [];
+    mockCampaigns.forEach((camp) => {
+      c.conjuntos.forEach((setName, j) => {
+        const setId = camp.campaign_id + "0" + j;
+        const spend = parseFloat((camp.spend / 3).toFixed(2));
+        const impressions = Math.floor(camp.impressions / 3);
+        const clicks = Math.floor(camp.clicks / 3);
+        const reach = Math.floor(camp.reach / 3);
+        const conversas = Math.floor(camp.conversas / 3);
+        const seguidores = Math.floor(camp.seguidores / 3);
+
+        mockAdsets.push({
+          adset_id: setId,
+          adset_name: setName + ` (${camp.campaign_name})`,
+          campaign_id: camp.campaign_id,
+          campaign_name: camp.campaign_name,
+          spend,
+          impressions,
+          clicks,
+          reach,
+          conversas,
+          seguidores,
+          actions: [
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
+            { action_type: 'page_like', value: String(seguidores) }
+          ]
+        });
+      });
+    });
+
+    // 3. Gerar Criativos (Ads) para cada conjunto
+    const mockAds = [];
+    mockAdsets.forEach((adset) => {
+      c.criativos.forEach((creativeName, k) => {
+        const adId = adset.adset_id + "0" + k;
+        const spend = parseFloat((adset.spend / 3).toFixed(2));
+        const impressions = Math.floor(adset.impressions / 3);
+        const clicks = Math.floor(adset.clicks / 3);
+        const reach = Math.floor(adset.reach / 3);
+        const conversas = Math.floor(adset.conversas / 3);
+        const seguidores = Math.floor(adset.seguidores / 3);
+
+        mockAds.push({
+          ad_id: adId,
+          ad_name: creativeName + ` [V${k+1}]`,
+          adset_id: adset.adset_id,
+          adset_name: adset.adset_name,
+          campaign_id: adset.campaign_id,
+          campaign_name: adset.campaign_name,
+          spend,
+          impressions,
+          clicks,
+          reach,
+          conversas,
+          seguidores,
+          actions: [
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
+            { action_type: 'page_like', value: String(seguidores) }
+          ]
+        });
+      });
+    });
+
+    // 4. Gerar Regiões (Estados) - Simulação do caso "SP vs PR" com escala por data
+    const mockRegions = [];
+    const estados = [
+      { name: "São Paulo", sigla: "SP", clickRate: 0.50, convRate: 0.002, spendWeight: 0.40 }, // SP: muito clique, pouquíssimas conversas
+      { name: "Paraná", sigla: "PR", clickRate: 0.08, convRate: 0.15, spendWeight: 0.15 },    // PR: poucos cliques, muitas conversas reais
+      { name: "Minas Gerais", sigla: "MG", clickRate: 0.15, convRate: 0.07, spendWeight: 0.18 },
+      { name: "Rio de Janeiro", sigla: "RJ", clickRate: 0.12, convRate: 0.05, spendWeight: 0.12 },
+      { name: "Rio Grande do Sul", sigla: "RS", clickRate: 0.08, convRate: 0.06, spendWeight: 0.08 },
+      { name: "Santa Catarina", sigla: "SC", clickRate: 0.07, convRate: 0.07, spendWeight: 0.07 }
+    ];
+
+    mockCampaigns.forEach((camp) => {
+      estados.forEach((est) => {
+        const spend = parseFloat((camp.spend * est.spendWeight).toFixed(2));
+        const clicks = Math.floor(camp.clicks * est.clickRate);
+        const impressions = Math.floor(camp.impressions * est.spendWeight);
+        const reach = Math.floor(camp.reach * est.spendWeight);
+        
+        let conversas = 0;
+        if (est.sigla === 'SP') {
+          conversas = Math.max(0, Math.round((Math.floor(Math.random() * 2) + 1) * dateScale)); // SP: muito clique, pouquíssimas conversas
+        } else if (est.sigla === 'PR') {
+          conversas = Math.floor(clicks * est.convRate) + Math.max(1, Math.round(8 * dateScale)); // PR: poucos cliques, muitas conversas reais
+        } else {
+          conversas = Math.max(0, Math.floor(clicks * est.convRate));
+        }
+        
+        const seguidores = Math.max(0, Math.floor(clicks * 0.03));
+
+        mockRegions.push({
+          campaign_id: camp.campaign_id,
+          campaign_name: camp.campaign_name,
+          region: est.name,
+          spend,
+          clicks,
+          impressions,
+          reach,
+          conversas,
+          seguidores,
+          actions: [
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
+            { action_type: 'page_like', value: String(seguidores) }
+          ]
+        });
+      });
+    });
+
+    // 5. Gerar Plataformas (publisher_platform)
+    const mockPlatforms = [];
+    const platformsList = [
+      { name: "instagram", weight: 0.65 },
+      { name: "facebook", weight: 0.25 },
+      { name: "messenger", weight: 0.08 },
+      { name: "audience_network", weight: 0.02 }
+    ];
+
+    mockCampaigns.forEach((camp) => {
+      platformsList.forEach((plat) => {
+        const spend = parseFloat((camp.spend * plat.weight).toFixed(2));
+        const clicks = Math.floor(camp.clicks * plat.weight);
+        const impressions = Math.floor(camp.impressions * plat.weight);
+        const reach = Math.floor(camp.reach * plat.weight);
+        const conversas = Math.max(0, Math.floor(camp.conversas * plat.weight));
+        const seguidores = Math.max(0, Math.floor(camp.seguidores * plat.weight));
+
+        mockPlatforms.push({
+          campaign_id: camp.campaign_id,
+          campaign_name: camp.campaign_name,
+          publisher_platform: plat.name,
+          spend,
+          clicks,
+          impressions,
+          reach,
+          conversas,
+          seguidores,
+          actions: [
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
+            { action_type: 'page_like', value: String(seguidores) }
+          ]
+        });
+      });
+    });
+
     const periodLabel = startDate && endDate 
       ? `Período: ${startDate} a ${endDate}` 
       : `Período: últimos ${limitDays} dias`;
+
     return res.json({
+      campaigns: mockCampaigns,
+      adsets: mockAdsets,
+      creatives: mockAds,
+      regions: mockRegions,
+      platforms: mockPlatforms,
       logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta para a conta ${targetAccount} - ${periodLabel}` },
-        { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=ad&fields=ad_name,spend...` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Resposta recebida por Criativos (200 OK).' },
-        { type: 'INFO', source: 'Meta API v25.0', message: `GET https://graph.facebook.com/v25.0/${targetAccount}/insights?level=campaign&breakdowns=publisher_platform,device_platform...` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: 'Resposta recebida por Plataforma/Dispositivo (200 OK).' }
-      ],
-      spend: 1450.00,
-      cpl: 14.50
+        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta simulada para a conta ${targetAccount} - ${periodLabel}` },
+        { type: 'INFO', source: 'Meta API v25.0', message: `Consultando breakdowns por Região (Estados) e Plataformas...` },
+        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Retornados registros fictícios para o cliente '${client}' no Modo Demo.` }
+      ]
     });
   }
 
+  // Modo Real
   let token = null;
 
   if (actId) {
@@ -497,35 +708,78 @@ app.get('/api/meta-insights', async (req, res) => {
     const logPeriod = startDate && endDate ? `${startDate} a ${endDate}` : `Últimos ${limitDays} dias`;
     console.log(`Chamando Meta Ads API v25.0 para a conta ${actId} (${logPeriod})...`);
     
+    // Função auxiliar robusta para buscar insights com tratamento de erros por chamada
+    const fetchInsights = async (level, extraParams = {}) => {
+      try {
+        const apiResponse = await axios.get(`https://graph.facebook.com/v25.0/${actId}/insights`, {
+          params: {
+            access_token: token,
+            level,
+            time_range: timeRange,
+            limit: 250,
+            ...extraParams
+          }
+        });
+        
+        const rawData = apiResponse.data?.data || [];
+        
+        // Pós-processa cada registro inserindo 'conversas' e 'seguidores'
+        return rawData.map(item => {
+          let conversas = 0;
+          let seguidores = 0;
+          if (Array.isArray(item.actions)) {
+            item.actions.forEach(act => {
+              const type = act.action_type || '';
+              const val = parseInt(act.value || 0, 10);
+              if (type.includes('messaging_first_reply') || 
+                  type.includes('messaging_conversation_started') || 
+                  type.includes('onsite_conversion.messaging_first_reply') ||
+                  type.includes('onsite_conversion.messaging_conversation_started') ||
+                  type === 'messaging_first_reply') {
+                conversas += val;
+              }
+              if (type === 'page_like' || type === 'like' || type.includes('page_like')) {
+                seguidores += val;
+              }
+            });
+          }
+          return {
+            ...item,
+            spend: parseFloat(item.spend || 0),
+            clicks: parseInt(item.clicks || 0, 10),
+            impressions: parseInt(item.impressions || 0, 10),
+            reach: parseInt(item.reach || 0, 10),
+            conversas,
+            seguidores
+          };
+        });
+      } catch (err) {
+        const errMsg = err.response?.data?.error?.message || err.message;
+        console.error(`Erro ao buscar insights do Meta (${level}):`, errMsg);
+        return [];
+      }
+    };
+
     // Dispara chamadas de insights em paralelo
-    const [campaignRes, creativeRes] = await Promise.all([
-      axios.get(`https://graph.facebook.com/v25.0/${actId}/insights`, {
-        params: {
-          access_token: token,
-          level: 'campaign',
-          breakdowns: 'publisher_platform,device_platform',
-          time_range: timeRange,
-          fields: 'campaign_name,spend,clicks,impressions,actions'
-        }
-      }),
-      axios.get(`https://graph.facebook.com/v25.0/${actId}/insights`, {
-        params: {
-          access_token: token,
-          level: 'ad',
-          time_range: timeRange,
-          fields: 'ad_name,campaign_name,spend,clicks,impressions,actions',
-          limit: 100
-        }
-      })
+    const [campaigns, adsets, creatives, regions, platforms] = await Promise.all([
+      fetchInsights('campaign', { fields: 'campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
+      fetchInsights('adset', { fields: 'adset_name,adset_id,campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
+      fetchInsights('ad', { fields: 'ad_name,ad_id,adset_name,adset_id,campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
+      fetchInsights('campaign', { breakdowns: 'region', fields: 'campaign_id,spend,clicks,impressions,reach,actions', limit: 500 }),
+      fetchInsights('campaign', { breakdowns: 'publisher_platform', fields: 'campaign_id,spend,clicks,impressions,reach,actions', limit: 500 })
     ]);
 
     res.json({
-      campaigns: campaignRes.data.data || [],
-      creatives: creativeRes.data.data || [],
+      campaigns,
+      adsets,
+      creatives,
+      regions,
+      platforms,
       logs: [
         { type: 'INFO', source: 'Meta API v25.0', message: `Consulta efetuada na conta ${actId}.` },
-        { type: 'INFO', source: 'Meta API v25.0', message: `Retornados ${campaignRes.data.data?.length || 0} registros de campanhas e ${creativeRes.data.data?.length || 0} criativos.` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Sucesso no processamento de insights de anúncios v25.0.` }
+        { type: 'INFO', source: 'Meta API v25.0', message: `Retornados ${campaigns.length} campanhas, ${adsets.length} conjuntos, ${creatives.length} criativos.` },
+        { type: 'INFO', source: 'Meta API v25.0', message: `Filtros regional (região) e plataforma extraídos com sucesso.` },
+        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Sucesso no processamento dos insights ampliado v25.0.` }
       ]
     });
   } catch (err) {
