@@ -267,26 +267,93 @@ app.get('/api/leads', async (req, res) => {
       return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
     }
 
-    // C. Ler os valores do Sheets
-    const resValues = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetFile.id,
-      range: 'A1:Z5000'
+    // C. Buscar abas da planilha
+    const spreadsheetMeta = await sheets.spreadsheets.get({
+      spreadsheetId: sheetFile.id
     });
-    const rows = resValues.data.values;
+    const sheetTitles = spreadsheetMeta.data.sheets.map(s => s.properties.title);
 
-    if (!rows || rows.length < 2) {
+    // Identificar abas corretas para Leads e Resumo (busca resiliente)
+    const leadsSheetName = sheetTitles.find(t => 
+      t.toLowerCase().includes('leads_campanha_whatsapp') || 
+      t.toLowerCase().includes('leads_campanha') || 
+      t.toLowerCase().includes('leads')
+    ) || sheetTitles[0];
+
+    const resumoSheetName = sheetTitles.find(t => 
+      t.toLowerCase() === 'resumo' || 
+      t.toLowerCase().includes('resumo')
+    );
+
+    // D. Ler dados da aba de Leads
+    let leadsRows = [];
+    try {
+      const resLeads = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetFile.id,
+        range: `'${leadsSheetName}'!A1:Z5000`
+      });
+      leadsRows = resLeads.data.values;
+    } catch (errLeads) {
+      console.error(`Erro ao carregar aba de leads [${leadsSheetName}]:`, errLeads);
+    }
+
+    if (!leadsRows || leadsRows.length < 2) {
       return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
     }
 
-    // D. Normalização de colunas
-    const headers = rows[0].map(h => h.toString().toLowerCase().trim());
-    const leadRows = rows.slice(1);
-    
+    // E. Carregar aba RESUMO e criar dicionário para cruzamento inteligente
+    const resumoMap = new Map();
+    if (resumoSheetName) {
+      try {
+        const resResumo = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetFile.id,
+          range: `'${resumoSheetName}'!A1:Z5000`
+        });
+        const resumoRows = resResumo.data.values;
+        if (resumoRows && resumoRows.length >= 2) {
+          const resumoHeaders = resumoRows[0].map(h => h.toString().toLowerCase().trim());
+          const phoneIdx = resumoHeaders.findIndex(h => h === 'telefone' || h.includes('telefone') || h === 'phone');
+          const faseIdx = resumoHeaders.findIndex(h => h === 'fase' || h.includes('fase') || h === 'status');
+          const valorIdx = resumoHeaders.findIndex(h => h.includes('valor') || h.includes('estimado'));
+          const obsIdx = resumoHeaders.findIndex(h => h.includes('observ') || h.includes('obs'));
+
+          if (phoneIdx !== -1) {
+            for (let i = 1; i < resumoRows.length; i++) {
+              const row = resumoRows[i];
+              const rawPhone = row[phoneIdx];
+              if (rawPhone) {
+                const cleanPh = rawPhone.toString().replace(/\D/g, '');
+                if (cleanPh) {
+                  resumoMap.set(cleanPh, {
+                    fase: faseIdx !== -1 && row[faseIdx] ? row[faseIdx].toString().trim() : '',
+                    valor: valorIdx !== -1 && row[valorIdx] ? row[valorIdx].toString().trim() : '',
+                    obs: obsIdx !== -1 && row[obsIdx] ? row[obsIdx].toString().trim() : ''
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (errResumo) {
+        console.error(`Erro ao carregar aba de resumo [${resumoSheetName}]:`, errResumo);
+      }
+    }
+
+    // F. Normalização de colunas com prioridade para busca exata
+    const headers = leadsRows[0].map(h => h.toString().toLowerCase().trim());
+    const leadRows = leadsRows.slice(1);
+
     const mappingIndexes = {};
     for (const [key, aliases] of Object.entries(COLUMN_MAPPINGS)) {
-      mappingIndexes[key] = headers.findIndex(header => 
-        aliases.includes(header) || aliases.some(alias => header.includes(alias))
-      );
+      // 1. Tentar correspondência exata primeiro
+      let idx = headers.findIndex(header => aliases.includes(header));
+      // 2. Se não encontrar, tentar correspondência parcial
+      if (idx === -1) {
+        idx = headers.findIndex(header => 
+          aliases.some(alias => header.includes(alias))
+        );
+      }
+      mappingIndexes[key] = idx;
     }
 
     const leads = leadRows.map(row => {
@@ -298,11 +365,44 @@ app.get('/api/leads', async (req, res) => {
           lead[field] = '';
         }
       }
-      
+
       // Normalizações básicas
       if (lead.date) lead.date = formatDateString(lead.date);
       if (!lead.platform) lead.platform = 'Direto / Desconhecido';
       if (!lead.device) lead.device = 'Não Especificado';
+
+      // Cruzamento inteligente com a aba RESUMO (cruzamento por telefone)
+      let leadPhase = '';
+      let leadValue = '';
+      let leadObs = '';
+
+      if (lead.phone) {
+        const cleanLeadPhone = lead.phone.replace(/\D/g, '');
+        if (cleanLeadPhone) {
+          if (resumoMap.has(cleanLeadPhone)) {
+            const dataResumo = resumoMap.get(cleanLeadPhone);
+            leadPhase = dataResumo.fase;
+            leadValue = dataResumo.valor;
+            leadObs = dataResumo.obs;
+          } else {
+            // Busca aproximada baseada nos últimos 8+ dígitos
+            for (const [resumoPhone, dataResumo] of resumoMap.entries()) {
+              if (cleanLeadPhone.length >= 8 && resumoPhone.length >= 8) {
+                if (cleanLeadPhone.endsWith(resumoPhone) || resumoPhone.endsWith(cleanLeadPhone)) {
+                  leadPhase = dataResumo.fase;
+                  leadValue = dataResumo.valor;
+                  leadObs = dataResumo.obs;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      lead.phase = leadPhase || 'Lead';
+      lead.estimated_value = leadValue;
+      lead.observations = leadObs;
 
       return lead;
     }).filter(lead => lead.name || lead.phone);
@@ -836,6 +936,7 @@ function generateMockLeads(cliente) {
         date: h.toISOString().replace('T', ' ').substring(0, 19),
         name: nomes[Math.floor(Math.random() * nomes.length)],
         phone: `(${ddds[Math.floor(Math.random() * ddds.length)]}) 9${Math.floor(Math.random()*8999)+1000}-${Math.floor(Math.random()*8999)+1000}`,
+        phase: ["Lead", "Cliente em potencial", "Proposta enviada", "Converteu", "Perdido", "Não respondeu"][Math.floor(Math.random() * 6)],
         device: c.dispositivos[Math.floor(Math.random() * c.dispositivos.length)],
         platform: c.plataformas[Math.floor(Math.random() * c.plataformas.length)],
         campaign: c.campanhas[Math.floor(Math.random() * c.campanhas.length)],

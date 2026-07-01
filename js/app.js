@@ -495,6 +495,7 @@ const App = {
         return (
           (lead.name && lead.name.toLowerCase().includes(this.state.searchQuery)) ||
           (lead.phone && lead.phone.includes(this.state.searchQuery)) ||
+          (lead.phase && lead.phase.toLowerCase().includes(this.state.searchQuery)) ||
           (lead.platform && lead.platform.toLowerCase().includes(this.state.searchQuery)) ||
           (lead.campaign && lead.campaign.toLowerCase().includes(this.state.searchQuery)) ||
           (lead.creative && lead.creative.toLowerCase().includes(this.state.searchQuery))
@@ -669,10 +670,20 @@ const App = {
         formattedDate = formattedDate.substring(0, 16); // Remove segundos
       }
 
+      // Estilização do badge de fase
+      let phaseClass = 'lead';
+      const cleanPhase = (lead.phase || '').toLowerCase().trim();
+      if (cleanPhase.includes('potencial')) phaseClass = 'potencial';
+      else if (cleanPhase.includes('proposta')) phaseClass = 'proposta';
+      else if (cleanPhase.includes('converteu') || cleanPhase.includes('ganho') || cleanPhase.includes('cliente')) phaseClass = 'converteu';
+      else if (cleanPhase.includes('perdido')) phaseClass = 'perdido';
+      else if (cleanPhase.includes('não respondeu') || cleanPhase.includes('nao respondeu') || cleanPhase.includes('sem resposta')) phaseClass = 'nao-respondeu';
+
       tr.innerHTML = `
         <td class="td-date">${formattedDate}</td>
         <td class="td-name font-semibold">${lead.name || '-'}</td>
         <td class="td-phone">${lead.phone || '-'}</td>
+        <td><span class="badge badge-fase badge-fase-${phaseClass}">${lead.phase || 'Lead'}</span></td>
         <td><span class="badge badge-platform">${lead.platform || '-'}</span></td>
         <td><span class="badge badge-device">${lead.device || '-'}</span></td>
         <td><div class="truncate-text" title="${lead.campaign || ''}">${lead.campaign || '-'}</div></td>
@@ -691,11 +702,12 @@ const App = {
       return;
     }
 
-    const headers = ['Data', 'Nome', 'Telefone', 'Plataforma', 'Dispositivo', 'Campanha', 'Conjunto', 'Criativo', 'Copy'];
+    const headers = ['Data', 'Nome', 'Telefone', 'Fase', 'Plataforma', 'Dispositivo', 'Campanha', 'Conjunto', 'Criativo', 'Copy'];
     const rows = this.state.filteredLeads.map(lead => [
       lead.date,
       lead.name,
       lead.phone,
+      lead.phase || 'Lead',
       lead.platform,
       lead.device,
       lead.campaign,

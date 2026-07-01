@@ -754,6 +754,48 @@ body {
   border: 1px solid rgba(168, 85, 247, 0.15);
 }
 
+/* Badges de Fase */
+.badge-fase {
+  font-family: var(--font-main);
+  text-transform: capitalize;
+}
+
+.badge-fase-lead {
+  background: rgba(156, 163, 175, 0.1);
+  color: #d1d5db;
+  border: 1px solid rgba(156, 163, 175, 0.15);
+}
+
+.badge-fase-potencial {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.badge-fase-proposta {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.15);
+}
+
+.badge-fase-converteu {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.badge-fase-perdido {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.badge-fase-nao-respondeu {
+  background: rgba(236, 72, 153, 0.1);
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.15);
+}
+
 /* Rodapé Paginação */
 .table-footer {
   display: flex;

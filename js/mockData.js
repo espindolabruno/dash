@@ -78,6 +78,7 @@ const MockData = {
           date: horaLead.toISOString().replace('T', ' ').substring(0, 19),
           name: nome,
           phone: telefone,
+          phase: ["Lead", "Cliente em potencial", "Proposta enviada", "Converteu", "Perdido", "Não respondeu"][Math.floor(Math.random() * 6)],
           device: device,
           platform: platform,
           campaign: campaign,
