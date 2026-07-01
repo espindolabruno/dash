@@ -870,12 +870,22 @@ function formatDateString(dateStr) {
       return date_info.toISOString().replace('T', ' ').substring(0, 19);
     }
     if (dateStr.includes('/')) {
-      const parts = dateStr.split(' ');
+      // Normaliza separadores de data e hora como espaços, removendo hífens (ex: "09/06/2026 - 12:45" -> "09/06/2026 12:45")
+      const cleanDateStr = dateStr.replace(/\s*-\s*/g, ' ').trim();
+      const parts = cleanDateStr.split(/\s+/);
       const dateParts = parts[0].split('/');
       const day = dateParts[0].padStart(2, '0');
       const month = dateParts[1].padStart(2, '0');
-      const year = dateParts[2];
-      const timePart = parts[1] || '00:00:00';
+      let year = dateParts[2];
+      if (year && year.length === 2) {
+        year = '20' + year;
+      }
+      
+      let timePart = parts[1] || '00:00:00';
+      // Adiciona segundos se faltar (ex: "12:45" -> "12:45:00")
+      if (timePart.split(':').length === 2) {
+        timePart += ':00';
+      }
       return `${year}-${month}-${day} ${timePart}`;
     }
     const dateObj = new Date(dateStr);
