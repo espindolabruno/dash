@@ -69,6 +69,14 @@ body {
   opacity: 1;
 }
 
+.app-screen.active.welcome-bg {
+  display: flex;
+}
+
+.hidden {
+  display: none !important;
+}
+
 /* Painéis de Vidro (Glassmorphism) */
 .glass-panel {
   background: var(--panel-bg);
@@ -96,7 +104,6 @@ body {
 .welcome-bg {
   height: 100vh;
   width: 100vw;
-  display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
@@ -254,6 +261,7 @@ body {
   justify-content: space-between;
   align-items: center;
   z-index: 100;
+  overflow: visible !important;
 }
 
 .header-left {
@@ -407,6 +415,7 @@ body {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+  z-index: 1000;
   background: rgba(13, 16, 37, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
