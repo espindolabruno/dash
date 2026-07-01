@@ -60,23 +60,28 @@ const App = {
           body: JSON.stringify({ user, password: pass })
         });
         
-        const data = await response.json();
         this.showLoader(false);
 
-        if (response.ok && data.success) {
-          this.log('SUCCESS', 'Auth', `Login efetuado com sucesso como '${user}'.`);
-          this.state.isDemoMode = false;
-          sessionStorage.setItem('session_token', data.token);
-          document.getElementById('demo-badge').classList.add('hidden');
-          this.enterDashboard();
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            this.log('SUCCESS', 'Auth', `Login efetuado com sucesso como '${user}'.`);
+            this.state.isDemoMode = false;
+            sessionStorage.setItem('session_token', data.token);
+            document.getElementById('demo-badge').classList.add('hidden');
+            this.enterDashboard();
+          } else {
+            this.log('ERROR', 'Auth', `Tentativa de login falhou para '${user}': ${data.error}`);
+            alert(data.error || 'Credenciais inválidas.');
+          }
         } else {
-          this.log('ERROR', 'Auth', `Tentativa de login falhou para '${user}': ${data.error}`);
-          alert(data.error || 'Credenciais inválidas.');
+          this.log('ERROR', 'Auth', `Servidor retornou erro HTTP: ${response.status}`);
+          alert(`Erro de conexão com o servidor (Código ${response.status}).\n\nIsso ocorre se a porta da aplicação no Easypanel não estiver configurada para 3000, ou se o deploy ainda não foi atualizado.`);
         }
       } catch (err) {
         this.showLoader(false);
-        this.log('ERROR', 'Auth', `Falha de conexão com a VPS: ${err.message}`);
-        alert('Não foi possível conectar ao servidor. Verifique se a aplicação Node.js está rodando.');
+        this.log('ERROR', 'Auth', `Falha de rede/parse: ${err.message}`);
+        alert(`Erro de conexão: ${err.message}\n\nVerifique se o seu deploy da aplicação Node.js está ativo no Easypanel.`);
       }
     });
 
