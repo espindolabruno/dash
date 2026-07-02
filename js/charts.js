@@ -605,19 +605,21 @@ const ChartsManager = {
       });
     }
 
-    // Calcular leads do CRM locais filtrados pela seleção atual
-    let filteredCrmLeadsForKpi = localLeads;
+    // 3. Filtrar as leads locais do CRM para conectar ao Funil e aos KPIs
+    let filteredCrmLeads = localLeads;
     if (activeCampaignName) {
-      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.campaign === activeCampaignName);
+      filteredCrmLeads = filteredCrmLeads.filter(l => l.campaign === activeCampaignName);
     }
     if (activeAdsetName) {
-      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.adset === activeAdsetName);
+      filteredCrmLeads = filteredCrmLeads.filter(l => l.adset === activeAdsetName);
     }
     if (activeAdName) {
       const cleanAdName = activeAdName.replace(/\s*\[V\d+\]$/, '');
-      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.creative === cleanAdName || l.creative === activeAdName);
+      filteredCrmLeads = filteredCrmLeads.filter(l => l.creative === cleanAdName || l.creative === activeAdName);
     }
-    const totalLeadsCrm = filteredCrmLeadsForKpi.length;
+
+    const totalLeadsCrm = filteredCrmLeads.length;
+    const totalVendasCrm = filteredCrmLeads.filter(l => l.phase === 'Converteu').length;
 
     const cpc = totalCompras > 0 ? (totalSpend / totalCompras) : 0;
 
@@ -640,22 +642,6 @@ const ChartsManager = {
         ? 'R$ ' + cpc.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '-';
     }
-
-    // 3. Filtrar as leads locais do CRM para conectar ao Funil
-    let filteredCrmLeads = localLeads;
-    if (activeCampaignName) {
-      filteredCrmLeads = filteredCrmLeads.filter(l => l.campaign === activeCampaignName);
-    }
-    if (activeAdsetName) {
-      filteredCrmLeads = filteredCrmLeads.filter(l => l.adset === activeAdsetName);
-    }
-    if (activeAdName) {
-      const cleanAdName = activeAdName.replace(/\s*\[V\d+\]$/, '');
-      filteredCrmLeads = filteredCrmLeads.filter(l => l.creative === cleanAdName || l.creative === activeAdName);
-    }
-
-    const totalLeadsCrm = filteredCrmLeads.length;
-    const totalVendasCrm = filteredCrmLeads.filter(l => l.phase === 'Converteu').length;
 
     // 4. Desenhar o Funil (Alcance, Cliques, Conversas, Leads, Vendas)
     this.renderFunnel(totalReach, totalClicks, totalConversas, totalLeadsCrm, totalVendasCrm);
