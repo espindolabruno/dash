@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect Agro - Dashboard Setor Agro</title>
+  
+  <!-- Google Fonts: Space Grotesk, Inter, IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome para Ícones -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- React & Recharts via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  
+  <!-- Babel para compilação JSX no navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root {
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    html, body {
+      height: 100%;
+      background: #12201A;
+      font-family: var(--font-body);
+      color: #F3F1E7;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar personalizada */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #12201A;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(243, 241, 231, 0.15);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(243, 241, 231, 0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="root" style="min-height: 100vh; background: #12201A;"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+    const { 
+      BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+      ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell 
+    } = Recharts;
+
+    // Configurações de cores exatas de example.txt
+    const COLORS = {
+      bg: '#12201A', 
+      surface: '#1B2B22', 
+      surfaceHi: '#24382C',
+      border: 'rgba(243,241,231,0.10)', 
+      borderStrong: 'rgba(243,241,231,0.18)',
+      text: '#F3F1E7', 
+      textSoft: '#AFBBAA', 
+      textFaint: '#7C8C7C',
+      gold: '#D8A73D', 
+      goldText: '#4A3410',
+      teal: '#4F8F73', 
+      tealText: '#0F241A',
+      slate: '#6E86A8', 
+      slateText: '#0E1B2A',
+      rust: '#C1633C', 
+      rustText: '#3A1508',
+    };
+
+    const STATUS_COLOR = { 
+      'convertido': COLORS.gold, 
+      'lead qualificado': COLORS.teal, 
+      'lead': COLORS.slate, 
+      'sem interesse': COLORS.rust 
+    };
+    
+    const STATUS_LABEL = { 
+      'convertido': 'Convertido', 
+      'lead qualificado': 'Qualificado', 
+      'lead': 'Lead', 
+      'sem interesse': 'Sem interesse' 
+    };
+    
+    const PLATFORM_LABEL = { 
+      instagram: 'Instagram', 
+      facebook: 'Facebook' 
+    };
+    
+    const DAY_ORDER = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+    const PERIOD_ORDER = ['Madrugada','Manhã','Tarde','Noite'];
+
+    function periodOf(hora) {
+      if (hora >= 0 && hora < 6) return 'Madrugada';
+      if (hora >= 6 && hora < 12) return 'Manhã';
+      if (hora >= 12 && hora < 18) return 'Tarde';
+      return 'Noite';
+    }
+
+    function fmtBRL(v) {
+      return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+    }
+    
+    function fmtNum(v) {
+      return v.toLocaleString('pt-BR');
+    }
+    
+    function fmtPct(v) {
+      return v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+    }
+
+    // Função de extração de dia da semana
+    function getDiaSemana(dateStr) {
+      if (!dateStr) return 'Seg';
+      const parts = dateStr.split(' ')[0].split('-');
+      if (parts.length < 3) return 'Seg';
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      const d = new Date(year, month, day);
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      // Mapeia para corresponder a DAY_ORDER
+      return days[d.getDay()];
+    }
+
+    // Função de cálculo de semana do ano ISO
+    function getISOWeek(dateStr) {
+      if (!dateStr) return '';
+      const parts = dateStr.split(' ')[0].split('-');
+      if (parts.length < 3) return '';
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      const d = new Date(year, month, day);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+      const week1 = new Date(d.getFullYear(), 0, 4);
+      const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+      return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    }
+
+    // Componente customizado para mapear Lucide Icons para classes do FontAwesome
+    function Icon({ name, size = 16, color }) {
+      const map = {
+        Users: 'fa-users',
+        Target: 'fa-bullseye',
+        TrendingUp: 'fa-arrow-trend-up',
+        DollarSign: 'fa-dollar-sign',
+        Smartphone: 'fa-mobile-screen-button',
+        RotateCcw: 'fa-arrow-rotate-left',
+        ImageOff: 'fa-image-slash',
+        ArrowUpRight: 'fa-arrow-up-right',
+        ArrowDownRight: 'fa-arrow-down',
+        Sparkles: 'fa-wand-magic-sparkles'
+      };
+      const cls = map[name] || 'fa-question';
+      return <i className={`fa-solid ${cls}`} style={{ fontSize: size, color }} />;
+    }
+
+    // Wrappers de ícones
+    const Users = (props) => <Icon name="Users" {...props} />;
+    const Target = (props) => <Icon name="Target" {...props} />;
+    const DollarSign = (props) => <Icon name="DollarSign" {...props} />;
+    const TrendingUp = (props) => <Icon name="TrendingUp" {...props} />;
+    const Smartphone = (props) => <Icon name="Smartphone" {...props} />;
+    const RotateCcw = (props) => <Icon name="RotateCcw" {...props} />;
+    const ImageOff = (props) => <Icon name="ImageOff" {...props} />;
+    const ArrowUpRight = (props) => <Icon name="ArrowUpRight" {...props} />;
+    const ArrowDownRight = (props) => <Icon name="ArrowDownRight" {...props} />;
+    const Sparkles = (props) => <Icon name="Sparkles" {...props} />;
+
+    // Componentes de Layout exatamente como em example.txt
+    function Chip({ active, onClick, children, color }) {
+      return (
+        <button onClick={onClick} style={{
+          padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontFamily: 'var(--font-body)',
+          border: `1px solid ${active ? (color || COLORS.gold) : COLORS.border}`,
+          background: active ? (color || COLORS.gold) : 'transparent',
+          color: active ? COLORS.bg : COLORS.textSoft,
+          cursor: 'pointer', transition: 'all .15s', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap'
+        }}>{children}</button>
+      );
+    }
+
+    function Card({ children, style }) {
+      return (
+        <div style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14,
+          padding: 18, ...style
+        }}>{children}</div>
+      );
+    }
+
+    // Adaptador de ícone para KPI de example.txt
+    function KPI({ icon: IconComponent, label, value, sub, accent }) {
+      return (
+        <Card style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: accent, opacity: 0.08 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <IconComponent size={15} color={accent} />
+            </div>
+            <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>{label}</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{value}</div>
+          {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{sub}</div>}
+        </Card>
+      );
+    }
+
+    function SectionTitle({ eyebrow, title, sub }) {
+      return (
+        <div style={{ marginBottom: 14 }}>
+          {eyebrow && <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{eyebrow}</div>}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>{title}</div>
+          {sub && <div style={{ fontSize: 12.5, color: COLORS.textFaint, marginTop: 2 }}>{sub}</div>}
+        </div>
+      );
+    }
+
+    function CustomTooltip({ active, payload, label }) {
+      if (!active || !payload || !payload.length) return null;
+      return (
+        <div style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.borderStrong}`, borderRadius: 10, padding: '8px 12px', fontSize: 12.5 }}>
+          <div style={{ color: COLORS.textSoft, marginBottom: 4, fontFamily: 'var(--font-body)' }}>{label}</div>
+          {payload.map((p, i) => (
+            <div key={i} style={{ color: p.color || COLORS.text, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+              {p.name}: {typeof p.value === 'number' ? (p.name.includes('Receita') || p.name.includes('Investimento') ? fmtBRL(p.value) : fmtNum(p.value)) : p.value}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Componente Principal
+    function Dashboard() {
+      // Estado de autenticação e carregamento
+      const [isDemoMode, setIsDemoMode] = useState(false);
+      const [clients, setClients] = useState([]);
+      const [selectedClient, setSelectedClient] = useState('');
+      const [selectedClientId, setSelectedClientId] = useState('');
+      const [leads, setLeads] = useState([]);
+      const [metaData, setMetaData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      // Estado dos filtros de example.txt
+      const [platforms, setPlatforms] = useState([]);
+      const [devices, setDevices] = useState([]);
+      const [statuses, setStatuses] = useState([]);
+      const [months, setMonths] = useState([]);
+      const [sortKey, setSortKey] = useState('leads');
+
+      // Verifica autenticação e carrega os clientes iniciais
+      useEffect(() => {
+        const sessionToken = sessionStorage.getItem('session_token');
+        const demoParam = new URLSearchParams(window.location.search).get('demo') === 'true';
+        const isDemo = demoParam || sessionStorage.getItem('is_demo_mode') === 'true';
+        
+        setIsDemoMode(isDemo);
+
+        if (!sessionToken && !isDemo) {
+          // Redireciona para o login se não autenticado e não em modo demo
+          window.location.href = '/';
+          return;
+        }
+
+        async function fetchClients() {
+          try {
+            setLoading(true);
+            const res = await fetch(`/api/clients?demo=${isDemo}`);
+            if (!res.ok) throw new Error('Erro ao buscar lista de clientes.');
+            const data = await res.json();
+            setClients(data);
+            
+            if (data.length > 0) {
+              setSelectedClient(data[0].name);
+              setSelectedClientId(data[0].id);
+            } else {
+              setLoading(false);
+            }
+          } catch (err) {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
+        
+        fetchClients();
+      }, []);
+
+      // Carrega os leads e dados do Meta Ads do cliente selecionado
+      useEffect(() => {
+        if (!selectedClient) return;
+
+        async function fetchClientData() {
+          try {
+            setLoading(true);
+            setError(null);
+            
+            // 1. Carregar leads da planilha do Google Drive
+            const leadsUrl = `/api/leads?clientId=${selectedClientId}&clientName=${encodeURIComponent(selectedClient)}&demo=${isDemoMode}`;
+            const leadsRes = await fetch(leadsUrl);
+            if (!leadsRes.ok) throw new Error('Falha ao carregar leads do cliente.');
+            
+            const leadsData = await leadsRes.json();
+            
+            // Normalizar os leads retornados para o formato esperado pelo dashboard de example.txt
+            const normalizedLeads = (leadsData.leads || []).map((l, index) => {
+              // Mapeamento inteligente de status
+              let statusMapped = 'lead';
+              const phase = (l.phase || '').toLowerCase().trim();
+              if (phase === 'converteu' || phase === 'convertido' || phase === 'venda') {
+                statusMapped = 'convertido';
+              } else if (phase === 'cliente em potencial' || phase === 'proposta enviada' || phase === 'lead qualificado') {
+                statusMapped = 'lead qualificado';
+              } else if (phase === 'perdido' || phase === 'sem interesse') {
+                statusMapped = 'sem interesse';
+              }
+
+              // Mapeamento de plataforma
+              const plat = (l.platform || '').toLowerCase().trim();
+              const isInstagram = plat.includes('instagram') || plat.includes('ig');
+              const isFacebook = plat.includes('facebook') || plat.includes('fb');
+              const platformMapped = isInstagram ? 'instagram' : (isFacebook ? 'facebook' : 'facebook');
+
+              // Mapeamento de dispositivo
+              const dev = (l.device || '').toLowerCase().trim();
+              const isIos = dev.includes('ios') || dev.includes('iphone') || dev.includes('apple');
+              const deviceMapped = isIos ? 'ios' : 'android';
+
+              return {
+                id: index + 1,
+                data_dt: l.date || '',
+                mes: l.date ? l.date.substring(0, 7) : '',
+                semana: getISOWeek(l.date),
+                dia_semana: getDiaSemana(l.date),
+                hora: l.date ? parseInt(l.date.substring(11, 13)) || 0 : 0,
+                dispositivo: deviceMapped,
+                plataforma: platformMapped,
+                criativo: l.creative || 'Anúncio sem Título',
+                anuncio_curto: l.copy || 'Sem Descrição',
+                thumb: l.anuncio_preview || '',
+                status: statusMapped,
+                valor: parseFloat(l.estimated_value) || 0.0
+              };
+            });
+
+            setLeads(normalizedLeads);
+
+            // Reseta filtros ao trocar de cliente
+            setPlatforms([]);
+            setDevices([]);
+            setStatuses([]);
+            setMonths([]);
+
+            // 2. Carregar dados de campanhas do Meta Ads se houver conta vinculada
+            const metaAccountId = leadsData.meta_ad_account_id;
+            if (metaAccountId) {
+              const metaUrl = `/api/meta-insights?accountId=${metaAccountId}&demo=${isDemoMode}&clientName=${encodeURIComponent(selectedClient)}&days=90`;
+              const metaRes = await fetch(metaUrl);
+              if (metaRes.ok) {
+                const metaDataRes = await metaRes.json();
+                setMetaData(metaDataRes);
+              } else {
+                setMetaData(null);
+              }
+            } else {
+              setMetaData(null);
+            }
+
+            setLoading(false);
+          } catch (err) {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
+
+        fetchClientData();
+      }, [selectedClient, selectedClientId, isDemoMode]);
+
+      // Mês selectors baseados no leads carregado
+      const allMonths = useMemo(() => [...new Set(leads.map(l => l.mes))].filter(Boolean).sort(), [leads]);
+
+      function toggle(list, setList, val) {
+        setList(list.includes(val) ? list.filter(x => x !== val) : [...list, val]);
+      }
+
+      // Filtro dos dados de leads em memória
+      const filtered = useMemo(() => leads.filter(l =>
+        (platforms.length === 0 || platforms.includes(l.plataforma)) &&
+        (devices.length === 0 || devices.includes(l.dispositivo)) &&
+        (statuses.length === 0 || statuses.includes(l.status)) &&
+        (months.length === 0 || months.includes(l.mes))
+      ), [leads, platforms, devices, statuses, months]);
+
+      const resetFilters = () => { 
+        setPlatforms([]); 
+        setDevices([]); 
+        setStatuses([]); 
+        setMonths([]); 
+      };
+      
+      const hasFilters = platforms.length || devices.length || statuses.length || months.length;
+
+      // KPIs
+      const kpis = useMemo(() => {
+        const total = filtered.length;
+        const convertidos = filtered.filter(l => l.status === 'convertido').length;
+        const qualificados = filtered.filter(l => l.status === 'lead qualificado').length;
+        const receita = filtered.filter(l => l.status === 'convertido').reduce((s, l) => s + l.valor, 0);
+        const ticket = convertidos > 0 ? receita / convertidos : 0;
+        const taxaConv = total > 0 ? (convertidos / total) * 100 : 0;
+        const taxaQual = total > 0 ? ((qualificados + convertidos) / total) * 100 : 0;
+        return { total, convertidos, qualificados, receita, ticket, taxaConv, taxaQual };
+      }, [filtered]);
+
+      // Funil
+      const funnel = useMemo(() => {
+        const total = filtered.length;
+        const qualOrMore = filtered.filter(l => l.status === 'lead qualificado' || l.status === 'convertido').length;
+        const conv = filtered.filter(l => l.status === 'convertido').length;
+        return [
+          { stage: 'Leads recebidos', value: total, pct: 100 },
+          { stage: 'Qualificados', value: qualOrMore, pct: total ? (qualOrMore / total) * 100 : 0 },
+          { stage: 'Convertidos', value: conv, pct: total ? (conv / total) * 100 : 0 },
+        ];
+      }, [filtered]);
+
+      // Tendência por mês
+      const trend = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          if (!l.mes) return;
+          if (!map[l.mes]) map[l.mes] = { mes: l.mes, leads: 0, convertidos: 0 };
+          map[l.mes].leads++;
+          if (l.status === 'convertido') map[l.mes].convertidos++;
+        });
+        return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
+      }, [filtered]);
+
+      // Comparação por plataforma
+      const byPlatform = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.plataforma || 'outro';
+          if (!map[k]) map[k] = { name: PLATFORM_LABEL[k] || k, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        return Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0 }));
+      }, [filtered]);
+
+      // Comparação por dispositivo
+      const byDevice = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.dispositivo || 'outro';
+          if (!map[k]) map[k] = { name: k, value: 0 };
+          map[k].value++;
+        });
+        return Object.values(map);
+      }, [filtered]);
+
+      // Heatmap dia x período
+      const heatmap = useMemo(() => {
+        const grid = {};
+        DAY_ORDER.forEach(d => { grid[d] = {}; PERIOD_ORDER.forEach(p => grid[d][p] = 0); });
+        filtered.forEach(l => {
+          const p = periodOf(l.hora);
+          if (grid[l.dia_semana]) grid[l.dia_semana][p]++;
+        });
+        let max = 1;
+        Object.values(grid).forEach(row => Object.values(row).forEach(v => { if (v > max) max = v; }));
+        return { grid, max };
+      }, [filtered]);
+
+      // Classificação de campanhas
+      const campaigns = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.campanha_curta || 'Não Identificada';
+          if (!map[k]) map[k] = { name: k, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        let arr = Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0, ticket: d.convertidos ? d.receita / d.convertidos : 0 }));
+        arr.sort((a, b) => b[sortKey] - a[sortKey]);
+        return arr;
+      }, [filtered, sortKey]);
+
+      // Classificação de criativos
+      const creatives = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.criativo + '|' + l.anuncio_curto;
+          if (!map[k]) map[k] = { titulo: l.criativo, anuncio: l.anuncio_curto, thumb: l.thumb, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        return Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0 })).sort((a, b) => b.leads - a.leads).slice(0, 6);
+      }, [filtered]);
+
+      // Cálculo de dados de investimento reais/meta
+      const metaMetrics = useMemo(() => {
+        if (!metaData || !metaData.campaigns) return null;
+        let spend = 0;
+        metaData.campaigns.forEach(c => {
+          spend += parseFloat(c.spend || 0);
+        });
+        const cpl = kpis.total > 0 ? spend / kpis.total : 0;
+        const roas = spend > 0 ? kpis.receita / spend : 0;
+        return { spend, cpl, roas };
+      }, [metaData, kpis]);
+
+      // Insights automáticos de example.txt
+      const insights = useMemo(() => {
+        const out = [];
+        if (byPlatform.length === 2) {
+          const [a, b] = [...byPlatform].sort((x, y) => y.taxa - x.taxa);
+          if (a.leads >= 5 && b.leads >= 5 && a.taxa - b.taxa > 3) {
+            out.push(`${a.name} converte ${fmtPct(a.taxa - b.taxa)} a mais que ${b.name} (${fmtPct(a.taxa)} vs ${fmtPct(b.taxa)}).`);
+          }
+        }
+        if (trend.length >= 2) {
+          const best = [...trend].sort((a, b) => b.convertidos - a.convertidos)[0];
+          if (best && best.convertidos > 0) out.push(`${best.mes} foi o melhor mês em conversões, com ${fmtNum(best.convertidos)} vendas fechadas.`);
+        }
+        let bestCell = null;
+        Object.entries(heatmap.grid).forEach(([day, row]) => {
+          Object.entries(row).forEach(([period, val]) => {
+            if (!bestCell || val > bestCell.val) bestCell = { day, period, val };
+          });
+        });
+        if (bestCell && bestCell.val >= 4) out.push(`${bestCell.day} à ${bestCell.period.toLowerCase()} é o horário com mais leads (${fmtNum(bestCell.val)}).`);
+        if (campaigns.length > 0) {
+          const topCamp = [...campaigns].filter(c => c.leads >= 5).sort((a, b) => b.taxa - a.taxa)[0];
+          if (topCamp) out.push(`A campanha "${topCamp.name}" tem a maior taxa de conversão entre as relevantes (${fmtPct(topCamp.taxa)}).`);
+        }
+        if (byDevice.length === 2) {
+          const total = byDevice.reduce((s, d) => s + d.value, 0);
+          const android = byDevice.find(d => d.name === 'android');
+          if (android && total > 0) out.push(`${fmtPct((android.value / total) * 100)} dos leads chegam via Android — vale garantir que o checkout/WhatsApp abre bem nesse ambiente.`);
+        }
+        return out.slice(0, 4);
+      }, [byPlatform, trend, heatmap, campaigns, byDevice]);
+
+      // Handler para logout
+      const handleLogout = () => {
+        sessionStorage.removeItem('session_token');
+        window.location.href = '/';
+      };
+
+      if (loading && leads.length === 0) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16 }}>
+            <div style={{ width: 40, height: 40, border: '4px solid rgba(243,241,231,0.1)', borderTop: `4px solid ${COLORS.gold}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <div style={{ fontSize: 14, color: COLORS.textSoft, fontFamily: 'var(--font-mono)' }}>Conectando à VPS e carregando planilha...</div>
+            <style>{`
+              @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{
+          background: COLORS.bg, minHeight: '100%', padding: '28px 24px', fontFamily: 'var(--font-body)',
+          color: COLORS.text, borderRadius: 16
+        }}>
+          <style>{`
+            .rows-bg { background-image: repeating-linear-gradient(180deg, rgba(218,167,61,0.03) 0px, rgba(218,167,61,0.03) 1px, transparent 1px, transparent 14px); }
+            table.rk th { text-align: left; font-size: 11px; color: ${COLORS.textFaint}; font-weight: 500; padding: 8px 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${COLORS.border}; }
+            table.rk td { padding: 10px 10px; font-size: 13px; border-bottom: 1px solid ${COLORS.border}; }
+            table.rk tr:last-child td { border-bottom: none; }
+            .badge-demo { background: rgba(216,167,61,0.1); border: 1px solid ${COLORS.gold}44; color: ${COLORS.gold}; font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-family: var(--font-mono); }
+          `}</style>
+
+          {/* Header principal com seletores de clientes */}
+          <div className="rows-bg" style={{ padding: '20px 22px', borderRadius: 14, border: `1px solid ${COLORS.border}`, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: COLORS.gold, textTransform: 'uppercase', letterSpacing: 1 }}>Connect · Setor Agro</span>
+                {isDemoMode && <span className="badge-demo">MODO DEMO</span>}
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <i className="fa-solid fa-wheat-awn" style={{ color: COLORS.gold }}></i>
+                <span>Dashboard de leads WhatsApp</span>
+              </div>
+              <div style={{ fontSize: 13, color: COLORS.textSoft, marginTop: 4 }}>
+                {fmtNum(leads.length)} leads no total · anúncios Meta integrados
+              </div>
+            </div>
+
+            {/* Ações e Seleção de Cliente */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-briefcase" style={{ color: COLORS.teal, fontSize: 13 }}></i>
+                <select 
+                  value={selectedClient} 
+                  onChange={(e) => {
+                    const c = clients.find(item => item.name === e.target.value);
+                    if (c) {
+                      setSelectedClient(c.name);
+                      setSelectedClientId(c.id);
+                    }
+                  }} 
+                  style={{ background: 'transparent', border: 'none', color: COLORS.text, fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer', paddingRight: 10 }}
+                >
+                  {clients.map(c => <option key={c.id} value={c.name} style={{ background: COLORS.surface }}>{c.name}</option>)}
+                </select>
+              </div>
+
+              {/* Botão de retorno e logout */}
+              <a href="/" style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, textDecoration: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, transition: 'all 0.2s' }}>
+                <i className="fa-solid fa-arrow-left"></i> Painel Geral
+              </a>
+
+              <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 12.5, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                <i className="fa-solid fa-right-from-bracket"></i>
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ background: COLORS.rust + '20', border: `1px solid ${COLORS.rust}55`, color: '#E8A98C', fontSize: 13, padding: '12px 18px', borderRadius: 10, marginBottom: 22 }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>
+              {error}
+            </div>
+          )}
+
+          {/* Filtros */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 22 }}>
+            {['instagram', 'facebook'].map(p => (
+              <Chip key={p} active={platforms.includes(p)} onClick={() => toggle(platforms, setPlatforms, p)}>{PLATFORM_LABEL[p]}</Chip>
+            ))}
+            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+            {['android', 'ios'].map(d => (
+              <Chip key={d} active={devices.includes(d)} onClick={() => toggle(devices, setDevices, d)} color={COLORS.teal}>{d === 'android' ? 'Android' : 'iOS'}</Chip>
+            ))}
+            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+            {['lead', 'lead qualificado', 'convertido', 'sem interesse'].map(s => (
+              <Chip key={s} active={statuses.includes(s)} onClick={() => toggle(statuses, setStatuses, s)} color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Chip>
+            ))}
+            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+            <select value="" onChange={e => { if (e.target.value) toggle(months, setMonths, e.target.value); }} style={{ background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: 999, color: COLORS.textSoft, fontSize: 12.5, padding: '6px 10px', outline: 'none' }}>
+              <option value="" style={{ background: COLORS.surface }}>+ Mês</option>
+              {allMonths.filter(m => !months.includes(m)).map(m => <option key={m} value={m} style={{ background: COLORS.surface }}>{m}</option>)}
+            </select>
+            {months.map(m => <Chip key={m} active onClick={() => toggle(months, setMonths, m)} color={COLORS.slate}>{m} ×</Chip>)}
+            {hasFilters && (
+              <button onClick={resetFilters} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: COLORS.textFaint, fontSize: 12, cursor: 'pointer', marginLeft: 4 }}>
+                <RotateCcw size={12} /> limpar filtros
+              </button>
+            )}
+          </div>
+
+          {/* KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 22 }}>
+            <KPI icon={Users} label="Total de leads" value={fmtNum(kpis.total)} accent={COLORS.slate} />
+            <KPI icon={Target} label="Taxa de conversão" value={fmtPct(kpis.taxaConv)} sub={`${fmtNum(kpis.convertidos)} convertidos`} accent={COLORS.gold} />
+            <KPI icon={TrendingUp} label="Taxa de qualificação" value={fmtPct(kpis.taxaQual)} sub="qualificado + convertido" accent={COLORS.teal} />
+            <KPI icon={DollarSign} label="Receita gerada" value={fmtBRL(kpis.receita)} accent={COLORS.gold} />
+            <KPI icon={DollarSign} label="Ticket médio" value={fmtBRL(kpis.ticket)} sub="por venda fechada" accent={COLORS.rust} />
+            {metaMetrics ? (
+              <KPI 
+                icon={Smartphone} 
+                label="Investimento Meta" 
+                value={fmtBRL(metaMetrics.spend)} 
+                sub={metaMetrics.spend > 0 ? `ROAS: ${metaMetrics.roas.toFixed(2)}x | CPL: ${fmtBRL(metaMetrics.cpl)}` : 'Sem investimento'} 
+                accent={COLORS.gold} 
+              />
+            ) : (
+              <KPI 
+                icon={Smartphone} 
+                label="Status Meta" 
+                value="Sem Vínculo" 
+                sub="Não há conta Meta Ads vinculada" 
+                accent={COLORS.rust} 
+              />
+            )}
+          </div>
+
+          {/* Insights automáticos */}
+          {insights.length > 0 && (
+            <Card style={{ marginBottom: 22, background: COLORS.surfaceHi }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Sparkles size={15} color={COLORS.gold} />
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>Padrões encontrados nos dados filtrados</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+                {insights.map((ins, i) => (
+                  <div key={i} style={{ fontSize: 13, color: COLORS.textSoft, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ color: COLORS.gold, fontFamily: 'var(--font-mono)', fontSize: 12, marginTop: 1 }}>{String(i + 1).padStart(2, '0')}</span>
+                    <span>{ins}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Funil + Trend */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
+            <Card>
+              <SectionTitle eyebrow="Funil" title="Do lead à venda" sub="Leads sem interesse saem do funil" />
+              {funnel.map((f, i) => (
+                <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+                    <span style={{ color: COLORS.textSoft }}>{f.stage}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>{fmtNum(f.value)} · {fmtPct(f.pct)}</span>
+                  </div>
+                  <div style={{ height: 10, background: COLORS.surfaceHi, borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${f.pct}%`, background: i === 2 ? COLORS.gold : i === 1 ? COLORS.teal : COLORS.slate, borderRadius: 6, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              ))}
+            </Card>
+            
+            <Card style={{ minHeight: 250 }}>
+              <SectionTitle eyebrow="Tendência" title="Leads e conversões por mês" />
+              <div style={{ width: '100%', height: 190 }}>
+                {trend.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trend} margin={{ left: -20, right: 10 }}>
+                      <CartesianGrid stroke={COLORS.border} vertical={false} />
+                      <XAxis dataKey="mes" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+                      <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Line type="monotone" dataKey="leads" name="Leads" stroke={COLORS.slate} strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="convertidos" name="Convertidos" stroke={COLORS.gold} strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Canal + Dispositivo + Heatmap */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
+            <Card style={{ minHeight: 250 }}>
+              <SectionTitle eyebrow="Canal" title="Instagram vs Facebook" />
+              <div style={{ width: '100%', height: 180 }}>
+                {byPlatform.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={byPlatform} margin={{ left: -20, right: 10 }}>
+                      <CartesianGrid stroke={COLORS.border} vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+                      <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="leads" name="Leads" fill={COLORS.slate} radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="convertidos" name="Convertidos" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justify-content: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
+                )}
+              </div>
+            </Card>
+
+            <Card style={{ minHeight: 250 }}>
+              <SectionTitle eyebrow="Dispositivo" title="Android vs iOS" />
+              <div style={{ width: '100%', height: 160 }}>
+                {byDevice.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={byDevice} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={3} startAngle={90} endAngle={450}>
+                        {byDevice.map((d, i) => <Cell key={i} fill={d.name === 'android' ? COLORS.teal : d.name === 'ios' ? COLORS.gold : COLORS.slate} stroke="none" />)}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justify-content: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 4 }}>
+                {byDevice.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: COLORS.textSoft }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.name === 'android' ? COLORS.teal : d.name === 'ios' ? COLORS.gold : COLORS.slate }} />
+                    <span style={{ textTransform: 'capitalize' }}>{d.name}</span> ({d.value})
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card style={{ minHeight: 250 }}>
+              <SectionTitle eyebrow="Horário" title="Quando os leads chegam" />
+              <div style={{ display: 'grid', gridTemplateColumns: '54px repeat(4, 1fr)', gap: 4, fontSize: 10.5 }}>
+                <div />
+                {PERIOD_ORDER.map(p => <div key={p} style={{ textAlign: 'center', color: COLORS.textFaint }}>{p}</div>)}
+                {DAY_ORDER.map(day => (
+                  <React.Fragment key={day}>
+                    <div style={{ color: COLORS.textFaint, display: 'flex', alignItems: 'center' }}>{day}</div>
+                    {PERIOD_ORDER.map(period => {
+                      const v = heatmap.grid[day][period];
+                      const intensity = v / (heatmap.max || 1);
+                      return (
+                        <div key={period} title={`${day} ${period}: ${v} leads`} style={{
+                          height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: v > 0 ? `rgba(216,167,61,${0.08 + intensity * 0.75})` : 'transparent',
+                          border: v > 0 ? `1px solid rgba(216,167,61,${0.05 + intensity * 0.2})` : `1px solid ${COLORS.border}`,
+                          color: intensity > 0.5 ? COLORS.goldText : COLORS.textFaint, fontFamily: 'var(--font-mono)', fontSize: 10
+                        }}>{v || ''}</div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Campanhas */}
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+              <SectionTitle eyebrow="Ranking" title="Performance por campanha" sub="Clique nas colunas para ordenar" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[['leads', 'Leads'], ['taxa', 'Conversão'], ['receita', 'Receita']].map(([k, label]) => (
+                  <Chip key={k} active={sortKey === k} onClick={() => setSortKey(k)}>{label}</Chip>
+                ))}
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="rk" style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+                <thead>
+                  <tr>
+                    <th>Campanha</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.length > 0 ? (
+                    campaigns.map((c, i) => (
+                      <tr key={i}>
+                        <td style={{ color: COLORS.text, fontWeight: 500 }}>{c.name}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtNum(c.leads)}</td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 50, height: 5, background: COLORS.surfaceHi, borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(c.taxa, 100)}%`, height: '100%', background: COLORS.teal }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: c.taxa > kpis.taxaConv ? COLORS.gold : COLORS.textSoft }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            {c.taxa > kpis.taxaConv ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                            {fmtPct(c.taxa)}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtBRL(c.receita)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: COLORS.textFaint }}>{c.ticket ? fmtBRL(c.ticket) : '—'}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhuma campanha encontrada</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Criativos */}
+          <Card>
+            <SectionTitle eyebrow="Criativos" title="Melhores anúncios por volume de leads" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+              {creatives.length > 0 ? (
+                creatives.map((c, i) => (
+                  <div key={i} style={{ background: COLORS.surfaceHi, borderRadius: 10, border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
+                    <div style={{ height: 90, background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                      {c.thumb ? (
+                        <img 
+                          src={c.thumb} 
+                          alt="" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }}
+                          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                        />
+                      ) : null}
+                      <div style={{ display: c.thumb ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, color: COLORS.textFaint }}>
+                        <ImageOff size={20} />
+                        <span style={{ fontSize: 10 }}>prévia indisponível</span>
+                      </div>
+                    </div>
+                    <div style={{ padding: 10 }}>
+                      <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 500, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.titulo}>{c.titulo}</div>
+                      <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.anuncio}>{c.anuncio}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                        <span style={{ color: COLORS.textSoft }}>{fmtNum(c.leads)} leads</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: c.taxa > 0 ? COLORS.gold : COLORS.textFaint }}>{fmtPct(c.taxa)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhum criativo encontrado com dados de prévia</div>
+              )}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // Renderiza a aplicação React no elemento root
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Dashboard />);
+  </script>
+</body>
+</html>

@@ -413,6 +413,12 @@ const App = {
   enterDashboard: function() {
     this.showScreen('dashboard-screen');
     
+    // Configura link do atalho agro.html dinamicamente
+    const btnGotoAgro = document.getElementById('btn-goto-agro');
+    if (btnGotoAgro) {
+      btnGotoAgro.href = `/agro.html${this.state.isDemoMode ? '?demo=true' : ''}`;
+    }
+    
     // Se estiver em modo real, exibe o perfil do Administrador da VPS
     if (!this.state.isDemoMode) {
       this.updateUserInfoUI({
