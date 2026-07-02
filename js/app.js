@@ -880,19 +880,13 @@ const App = {
         });
       }
 
-      // 4. Calcular CPL médio (Investimento total Meta / Leads locais do Meta)
-      const cpl = leadsMetaCount > 0 ? (totalSpend / leadsMetaCount) : 0;
-
-      // 5. Atualizar UI dos cards de topo
-      document.getElementById('kpi-meta-spend').textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      document.getElementById('kpi-meta-cpl').innerHTML = `<span title="${accountName}">CPL: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
-      
-      // 6. Atualizar a tabela exploradora e os gráficos de auditoria Meta
+      // 4. Atualizar UI de todos os cards de topo, tabelas e gráficos
+      this.updateKPIs();
       this.renderExplorerTable();
       this.updateMetaAuditCharts();
       this.renderCreativePerformanceTable();
 
-      this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos, CPL: R$ ${cpl.toFixed(2)}.`);
+      this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos.`);
 
     } catch (err) {
       document.getElementById('kpi-meta-spend').textContent = 'Erro VPS';
@@ -901,48 +895,67 @@ const App = {
     }
   },
 
-  // Calcula e atualiza os cards de KPI
+  // Calcula e atualiza os cards de KPI (Visão Geral sem breakdowns)
   updateKPIs: function() {
-    const count = this.state.filteredLeads.length;
-    document.getElementById('kpi-total-leads').textContent = count.toLocaleString('pt-BR');
+    // 1. Filtrar as leads locais apenas por período de data (ignora filtros de explorer como campanha/conjunto para visão geral)
+    let globalLeads = [...this.state.leads];
+    if (this.state.startDate && this.state.endDate) {
+      globalLeads = globalLeads.filter(lead => {
+        const leadDate = lead._parsedDate;
+        return leadDate && leadDate >= this.state.startDate && leadDate <= this.state.endDate;
+      });
+    }
+    const globalCount = globalLeads.length;
 
-    // Canal Líder
-    const platformCounts = {};
-    let leadingPlatform = 'Nenhum';
-    let maxPlatformLeads = 0;
+    // 2. Somar dados globais do Meta Ads (todas as campanhas do período, sem breakdowns)
+    let totalSpend = 0;
+    let totalConversasMeta = 0;
+    let totalComprasMeta = 0;
 
-    // Dispositivo Líder (para cálculo da taxa de conversão do dispositivo dominante)
-    const deviceCounts = {};
+    if (this.state.metaData && this.state.metaData.campaigns) {
+      this.state.metaData.campaigns.forEach(c => {
+        totalSpend += parseFloat(c.spend || 0);
+        totalConversasMeta += parseInt(c.conversas || 0);
+        totalComprasMeta += parseInt(c.compras || 0);
+      });
+    }
 
-    this.state.filteredLeads.forEach(lead => {
-      // Plataforma
-      if (lead.platform) {
-        platformCounts[lead.platform] = (platformCounts[lead.platform] || 0) + 1;
-        if (platformCounts[lead.platform] > maxPlatformLeads) {
-          maxPlatformLeads = platformCounts[lead.platform];
-          leadingPlatform = lead.platform;
-        }
-      }
-      
-      // Dispositivo
-      if (lead.device) {
-        deviceCounts[lead.device] = (deviceCounts[lead.device] || 0) + 1;
-      }
-    });
+    // 3. Atualizar Card 1: Conversas Iniciadas (Meta API onsite_conversion.messaging_conversation_started_7d)
+    const card1El = document.getElementById('kpi-total-leads');
+    if (card1El) {
+      card1El.textContent = this.state.metaData ? totalConversasMeta.toLocaleString('pt-BR') : '...';
+    }
 
-    document.getElementById('kpi-top-channel').textContent = leadingPlatform;
+    // 4. Atualizar Card 2: Conversas Recebidas (Total da Planilha no período)
+    const card2El = document.getElementById('kpi-top-channel');
+    if (card2El) {
+      card2El.textContent = globalCount.toLocaleString('pt-BR');
+    }
 
-    // Taxa de conversão por dispositivo (Mobile %)
-    const totalWithDevice = Object.values(deviceCounts).reduce((a, b) => a + b, 0);
-    const mobileCount = deviceCounts['Mobile'] || 0;
-    const mobilePercentage = totalWithDevice > 0 ? Math.round((mobileCount / totalWithDevice) * 100) : 0;
-    
-    document.getElementById('kpi-mobile-share').textContent = `${mobilePercentage}%`;
+    // 5. Atualizar Card 3: Compras (Meta API omni_purchase)
+    const card3El = document.getElementById('kpi-mobile-share');
+    if (card3El) {
+      card3El.textContent = this.state.metaData ? totalComprasMeta.toLocaleString('pt-BR') : '...';
+    }
 
-    // Taxa de Crescimento Simples (Fictícia baseada na metade do período vs final)
-    let trendHtml = '<i class="trend-icon up">↑</i> +12% vs período anterior';
-    if (count === 0) trendHtml = 'Sem dados';
-    document.getElementById('kpi-trend').innerHTML = trendHtml;
+    // 6. Atualizar Card 4: Investimento Meta Ads (Spend total)
+    const card4El = document.getElementById('kpi-meta-spend');
+    if (card4El) {
+      card4El.textContent = `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    // Calcular CPL geral (Spend / Leads reais da Planilha)
+    const cpl = globalCount > 0 ? (totalSpend / globalCount) : 0;
+    const cplEl = document.getElementById('kpi-meta-cpl');
+    if (cplEl) {
+      cplEl.innerHTML = `<span>CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+    }
+
+    // Subtítulo da tendência da planilha
+    const trendEl = document.getElementById('kpi-trend');
+    if (trendEl) {
+      trendEl.innerHTML = `<span>Total no período selecionado</span>`;
+    }
   },
 
   renderCreativePerformanceTable: function() {
