@@ -1325,35 +1325,58 @@ body {
 .log-entry {
   display: flex;
   gap: 8px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  align-items: flex-start;
+  margin-bottom: 2px;
 }
 
 .log-time {
   color: var(--text-muted);
   flex-shrink: 0;
   font-size: 0.72rem;
+  font-family: monospace;
 }
 
 .log-source {
   color: var(--primary);
   font-weight: 600;
   flex-shrink: 0;
+  font-family: monospace;
 }
 
 .log-message {
   flex-grow: 1;
+  font-size: 0.76rem;
 }
 
-/* Cores das Entradas de Log */
-.log-entry.info { color: #d1d5db; }
+/* Cores das Entradas de Log com fundo e borda */
+.log-entry.info { 
+  color: #e5e7eb; 
+  background: rgba(96, 165, 250, 0.04); 
+  border-left: 3px solid #3b82f6; 
+}
 .log-entry.info .log-source { color: #60a5fa; }
 
-.log-entry.success { color: #6ee7b7; }
+.log-entry.success { 
+  color: #ecfdf5; 
+  background: rgba(16, 185, 129, 0.04); 
+  border-left: 3px solid #10b981; 
+}
 .log-entry.success .log-source { color: var(--success); }
 
-.log-entry.warning { color: #fde047; }
+.log-entry.warning { 
+  color: #fffbef; 
+  background: rgba(245, 158, 11, 0.04); 
+  border-left: 3px solid #f59e0b; 
+}
 .log-entry.warning .log-source { color: var(--warning); }
 
-.log-entry.error { color: #fda4af; }
+.log-entry.error { 
+  color: #fff5f5; 
+  background: rgba(239, 68, 68, 0.04); 
+  border-left: 3px solid #ef4444; 
+}
 .log-entry.error .log-source { color: var(--error); }
 
 /* Estilos do Grid e Cards de Escolha de Contas Meta Ads (Facebook/Instagram) */

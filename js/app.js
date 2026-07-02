@@ -254,16 +254,18 @@ const App = {
       });
     }
 
-    // Busca na tabela (com debounce de 250ms para evitar travamentos e requisições excessivas)
-    let searchDebounceTimeout;
-    document.getElementById('table-search').addEventListener('input', (e) => {
-      clearTimeout(searchDebounceTimeout);
-      searchDebounceTimeout = setTimeout(() => {
-        this.state.searchQuery = e.target.value.toLowerCase().trim();
-        this.state.currentPage = 1;
-        this.applyFilters(true); // Pula requisições de rede ao Meta Insights ao buscar/filtrar na tabela
-      }, 250);
-    });
+    // Busca na tabela de Criativos (com debounce de 250ms)
+    let creativeSearchDebounce;
+    const creativeSearchEl = document.getElementById('creative-table-search');
+    if (creativeSearchEl) {
+      creativeSearchEl.addEventListener('input', (e) => {
+        clearTimeout(creativeSearchDebounce);
+        creativeSearchDebounce = setTimeout(() => {
+          this.state.creativeSearchQuery = e.target.value.toLowerCase().trim();
+          this.renderCreativePerformanceTable();
+        }, 250);
+      });
+    }
 
     // Seleção de Tipo de UTM no Gráfico
     const utmButtons = document.querySelectorAll('.utm-btn');
@@ -276,26 +278,13 @@ const App = {
       });
     });
 
-    // Paginação
-    document.getElementById('btn-prev-page').addEventListener('click', () => {
-      if (this.state.currentPage > 1) {
-        this.state.currentPage--;
-        this.renderTable();
-      }
-    });
-
-    document.getElementById('btn-next-page').addEventListener('click', () => {
-      const totalPages = Math.ceil(this.state.filteredLeads.length / this.state.itemsPerPage);
-      if (this.state.currentPage < totalPages) {
-        this.state.currentPage++;
-        this.renderTable();
-      }
-    });
-
-    // Exportação CSV
-    document.getElementById('btn-export-csv').addEventListener('click', () => {
-      this.exportToCSV();
-    });
+    // Exportação CSV de Criativos
+    const btnExportCreativeCsv = document.getElementById('btn-export-creative-csv');
+    if (btnExportCreativeCsv) {
+      btnExportCreativeCsv.addEventListener('click', () => {
+        this.exportCreativesToCSV();
+      });
+    }
 
     // Abas do Modal de Configurações
     const tabButtons = document.querySelectorAll('.modal-tab-btn');
@@ -820,8 +809,8 @@ const App = {
       this.fetchAndMergeMetaAds();
     }
 
-    // Renderiza tabela com os resultados
-    this.renderTable();
+    // Renderiza a tabela de desempenho de criativos
+    this.renderCreativePerformanceTable();
   },
 
   // Consulta o Meta Ads v25.0 (ou simula requisições de debug no modo demo) e calcula o Custo por Lead
@@ -863,6 +852,11 @@ const App = {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (errorData.logs && errorData.logs.length > 0) {
+          errorData.logs.forEach(logItem => {
+            this.log(logItem.type, logItem.source, logItem.message);
+          });
+        }
         throw new Error(errorData.error || `[Status ${response.status}] Falha ao ler insights do Meta.`);
       }
 
@@ -896,6 +890,7 @@ const App = {
       // 6. Atualizar a tabela exploradora e os gráficos de auditoria Meta
       this.renderExplorerTable();
       this.updateMetaAuditCharts();
+      this.renderCreativePerformanceTable();
 
       this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos, CPL: R$ ${cpl.toFixed(2)}.`);
 
@@ -950,101 +945,328 @@ const App = {
     document.getElementById('kpi-trend').innerHTML = trendHtml;
   },
 
-  // Renderiza a tabela de dados brutos paginada
-  renderTable: function() {
-    const tbody = document.getElementById('leads-table-body');
-    tbody.innerHTML = '';
+  renderCreativePerformanceTable: function() {
+    const tbody = document.getElementById('creative-table-body');
+    const counterEl = document.getElementById('creative-table-counter');
+    if (!tbody) return;
 
-    const totalLeads = this.state.filteredLeads.length;
-    const totalPages = Math.ceil(totalLeads / this.state.itemsPerPage);
+    let creatives = this.state.metaData ? (this.state.metaData.creatives || []) : [];
 
-    // Desabilitar/habilitar botões de paginação
-    document.getElementById('btn-prev-page').disabled = this.state.currentPage === 1;
-    document.getElementById('btn-next-page').disabled = this.state.currentPage >= totalPages || totalPages === 0;
+    // Filtrar criativos com base na Campanha/Conjunto selecionados no Explorer
+    if (this.state.selectedMetaCampaignId) {
+      creatives = creatives.filter(c => c.campaign_id === this.state.selectedMetaCampaignId);
+    }
+    if (this.state.selectedMetaAdsetId) {
+      creatives = creatives.filter(c => c.adset_id === this.state.selectedMetaAdsetId);
+    }
 
-    // Mostrar contador
-    document.getElementById('page-indicator').textContent = totalPages > 0 
-      ? `Página ${this.state.currentPage} de ${totalPages}` 
-      : 'Página 0 de 0';
+    // Criar um dicionário de criativos únicos agrupando por nome
+    const creativeGroups = {};
 
-    document.getElementById('table-counter').textContent = `${totalLeads} leads encontrados`;
+    // 1. Agrupar os criativos do Meta Ads
+    creatives.forEach(ad => {
+      // Limpa nome removendo a tag [VX] para consolidar a performance se houver duplicatas de nome
+      const cleanName = ad.ad_name.replace(/\s*\[V\d+\]$/i, '').trim();
+      if (!creativeGroups[cleanName]) {
+        creativeGroups[cleanName] = {
+          name: cleanName,
+          metaAds: [],
+          spend: 0,
+          clicks: 0,
+          conversasMeta: 0,
+          crmLeads: 0,
+          crmConversas: 0,
+          crmVendas: 0,
+          previewUrl: ''
+        };
+      }
+      creativeGroups[cleanName].metaAds.push(ad);
+      creativeGroups[cleanName].spend += parseFloat(ad.spend || 0);
+      creativeGroups[cleanName].clicks += parseInt(ad.clicks || 0);
+      creativeGroups[cleanName].conversasMeta += parseInt(ad.conversas || 0);
+    });
 
-    if (totalLeads === 0) {
+    // 2. Agrupar e cruzar com os dados do CRM da Planilha
+    const activePhases = ['Cliente em potencial', 'Proposta enviada', 'Converteu', 'Perdido'];
+    
+    this.state.filteredLeads.forEach(lead => {
+      const creativeCrmName = (lead.creative || '').trim();
+      if (!creativeCrmName) return;
+
+      // Matching case-insensitive
+      const key = Object.keys(creativeGroups).find(k => k.toLowerCase() === creativeCrmName.toLowerCase());
+      
+      if (key) {
+        creativeGroups[key].crmLeads++;
+        if (lead.phase === 'Converteu') {
+          creativeGroups[key].crmVendas++;
+        }
+        if (activePhases.includes(lead.phase)) {
+          creativeGroups[key].crmConversas++;
+        }
+        if (lead.anuncio_preview && !creativeGroups[key].previewUrl) {
+          creativeGroups[key].previewUrl = lead.anuncio_preview;
+        }
+      } else {
+        // Se o criativo existe na planilha mas não no Meta Ads
+        let campaignMatch = true;
+        let adsetMatch = true;
+        
+        if (this.state.selectedMetaCampaignId) {
+          const camp = (this.state.metaData?.campaigns || []).find(c => c.campaign_id === this.state.selectedMetaCampaignId);
+          if (camp && lead.campaign) {
+            campaignMatch = lead.campaign.toLowerCase() === camp.campaign_name.toLowerCase();
+          } else {
+            campaignMatch = false;
+          }
+        }
+        if (this.state.selectedMetaAdsetId) {
+          const adset = (this.state.metaData?.adsets || []).find(a => a.adset_id === this.state.selectedMetaAdsetId);
+          if (adset && lead.adset) {
+            adsetMatch = lead.adset.toLowerCase() === adset.adset_name.toLowerCase();
+          } else {
+            adsetMatch = false;
+          }
+        }
+
+        if (campaignMatch && adsetMatch) {
+          const cleanName = creativeCrmName.replace(/\s*\[V\d+\]$/i, '').trim();
+          if (!creativeGroups[cleanName]) {
+            creativeGroups[cleanName] = {
+              name: cleanName,
+              metaAds: [],
+              spend: 0,
+              clicks: 0,
+              conversasMeta: 0,
+              crmLeads: 0,
+              crmConversas: 0,
+              crmVendas: 0,
+              previewUrl: lead.anuncio_preview || ''
+            };
+          }
+          creativeGroups[cleanName].crmLeads++;
+          if (lead.phase === 'Converteu') {
+            creativeGroups[cleanName].crmVendas++;
+          }
+          if (activePhases.includes(lead.phase)) {
+            creativeGroups[cleanName].crmConversas++;
+          }
+          if (lead.anuncio_preview && !creativeGroups[cleanName].previewUrl) {
+            creativeGroups[cleanName].previewUrl = lead.anuncio_preview;
+          }
+        }
+      }
+    });
+
+    let creativeList = Object.values(creativeGroups);
+
+    // Filtrar pela busca textual
+    const query = this.state.creativeSearchQuery || '';
+    if (query) {
+      creativeList = creativeList.filter(c => c.name.toLowerCase().includes(query));
+    }
+
+    if (counterEl) {
+      counterEl.textContent = `${creativeList.length} criativos encontrados`;
+    }
+
+    if (creativeList.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="9" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-            Nenhum lead encontrado com os filtros atuais.
+          <td colspan="11" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            Nenhum criativo encontrado com os filtros atuais.
           </td>
         </tr>
       `;
       return;
     }
 
-    // Fatia os dados para a página atual
-    const startIndex = (this.state.currentPage - 1) * this.state.itemsPerPage;
-    const endIndex = Math.min(startIndex + this.state.itemsPerPage, totalLeads);
-    const pageLeads = this.state.filteredLeads.slice(startIndex, endIndex);
+    // Ordena por investimento decrescente
+    creativeList.sort((a, b) => b.spend - a.spend);
 
-    pageLeads.forEach(lead => {
-      const tr = document.createElement('tr');
-      
-      // Formata data de forma legível
-      let formattedDate = lead.date || '-';
-      if (formattedDate.length > 16) {
-        formattedDate = formattedDate.substring(0, 16); // Remove segundos
+    let html = '';
+    creativeList.forEach(c => {
+      const costPerConvIniciada = c.conversasMeta > 0 ? (c.spend / c.conversasMeta) : 0;
+      const costPerConvReal = c.crmConversas > 0 ? (c.spend / c.crmConversas) : 0;
+      const cpl = c.crmLeads > 0 ? (c.spend / c.crmLeads) : 0;
+      const cac = c.crmVendas > 0 ? (c.spend / c.crmVendas) : 0;
+
+      const formattedSpend = 'R$ ' + c.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const formattedCpaMeta = c.conversasMeta > 0 
+        ? 'R$ ' + costPerConvIniciada.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+      const formattedCpaCrm = c.crmConversas > 0 
+        ? 'R$ ' + costPerConvReal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+      const formattedCpl = c.crmLeads > 0 
+        ? 'R$ ' + cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+      const formattedCac = c.crmVendas > 0 
+        ? 'R$ ' + cac.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+
+      let previewHtml = '-';
+      if (c.previewUrl) {
+        previewHtml = `
+          <a href="${c.previewUrl}" target="_blank" class="btn-preview-link" title="Visualizar anúncio" style="color: var(--primary); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(0, 242, 254, 0.1); transition: all 0.2s;">
+            <i class="fa-solid fa-eye" style="font-size: 0.85rem;"></i>
+          </a>
+        `;
       }
 
-      // Estilização do badge de fase
-      let phaseClass = 'lead';
-      const cleanPhase = (lead.phase || '').toLowerCase().trim();
-      if (cleanPhase.includes('potencial')) phaseClass = 'potencial';
-      else if (cleanPhase.includes('proposta')) phaseClass = 'proposta';
-      else if (cleanPhase.includes('converteu') || cleanPhase.includes('ganho') || cleanPhase.includes('cliente')) phaseClass = 'converteu';
-      else if (cleanPhase.includes('perdido')) phaseClass = 'perdido';
-      else if (cleanPhase.includes('não respondeu') || cleanPhase.includes('nao respondeu') || cleanPhase.includes('sem resposta')) phaseClass = 'nao-respondeu';
-
-      tr.innerHTML = `
-        <td class="td-date">${formattedDate}</td>
-        <td class="td-name font-semibold">${lead.name || '-'}</td>
-        <td class="td-phone">${lead.phone || '-'}</td>
-        <td><span class="badge badge-fase badge-fase-${phaseClass}">${lead.phase || 'Lead'}</span></td>
-        <td><span class="badge badge-platform">${lead.platform || '-'}</span></td>
-        <td><span class="badge badge-device">${lead.device || '-'}</span></td>
-        <td><div class="truncate-text" title="${lead.campaign || ''}">${lead.campaign || '-'}</div></td>
-        <td><div class="truncate-text" title="${lead.adset || ''}">${lead.adset || '-'}</div></td>
-        <td><div class="truncate-text" title="${lead.creative || ''}">${lead.creative || '-'}</div></td>
-        <td><div class="truncate-text" title="${lead.copy || ''}">${lead.copy || '-'}</div></td>
+      html += `
+        <tr>
+          <td style="text-align: center; vertical-align: middle; padding: 10px;">${previewHtml}</td>
+          <td style="padding: 10px; font-weight: 600; color: #fff;">${c.name}</td>
+          <td style="padding: 10px; text-align: right;">${c.clicks.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600; color: var(--primary);">${c.conversasMeta.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600; color: var(--primary);">${c.crmConversas.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600; color: var(--success);">${c.crmLeads.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600; color: var(--success);">${c.crmVendas.toLocaleString('pt-BR')}</td>
+          <td style="padding: 10px; text-align: right;">${formattedCpaMeta}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600;">${formattedCpaCrm}</td>
+          <td style="padding: 10px; text-align: right;">${formattedCpl}</td>
+          <td style="padding: 10px; text-align: right; font-weight: 600; color: var(--accent-2);">${formattedCac}</td>
+        </tr>
       `;
-      tbody.appendChild(tr);
     });
+
+    tbody.innerHTML = html;
   },
 
-  // Exportar dados atuais em CSV
-  exportToCSV: function() {
-    if (this.state.filteredLeads.length === 0) {
-      alert('Nenhum dado disponível para exportar.');
+  exportCreativesToCSV: function() {
+    let creatives = this.state.metaData ? (this.state.metaData.creatives || []) : [];
+
+    if (this.state.selectedMetaCampaignId) {
+      creatives = creatives.filter(c => c.campaign_id === this.state.selectedMetaCampaignId);
+    }
+    if (this.state.selectedMetaAdsetId) {
+      creatives = creatives.filter(c => c.adset_id === this.state.selectedMetaAdsetId);
+    }
+
+    const creativeGroups = {};
+    creatives.forEach(ad => {
+      const cleanName = ad.ad_name.replace(/\s*\[V\d+\]$/i, '').trim();
+      if (!creativeGroups[cleanName]) {
+        creativeGroups[cleanName] = {
+          name: cleanName,
+          spend: 0,
+          clicks: 0,
+          conversasMeta: 0,
+          crmLeads: 0,
+          crmConversas: 0,
+          crmVendas: 0,
+          previewUrl: ''
+        };
+      }
+      creativeGroups[cleanName].spend += parseFloat(ad.spend || 0);
+      creativeGroups[cleanName].clicks += parseInt(ad.clicks || 0);
+      creativeGroups[cleanName].conversasMeta += parseInt(ad.conversas || 0);
+    });
+
+    const activePhases = ['Cliente em potencial', 'Proposta enviada', 'Converteu', 'Perdido'];
+    this.state.filteredLeads.forEach(lead => {
+      const creativeCrmName = (lead.creative || '').trim();
+      if (!creativeCrmName) return;
+
+      const key = Object.keys(creativeGroups).find(k => k.toLowerCase() === creativeCrmName.toLowerCase());
+      if (key) {
+        creativeGroups[key].crmLeads++;
+        if (lead.phase === 'Converteu') creativeGroups[key].crmVendas++;
+        if (activePhases.includes(lead.phase)) creativeGroups[key].crmConversas++;
+        if (lead.anuncio_preview && !creativeGroups[key].previewUrl) {
+          creativeGroups[key].previewUrl = lead.anuncio_preview;
+        }
+      } else {
+        let campaignMatch = true;
+        let adsetMatch = true;
+        
+        if (this.state.selectedMetaCampaignId) {
+          const camp = (this.state.metaData?.campaigns || []).find(c => c.campaign_id === this.state.selectedMetaCampaignId);
+          if (camp && lead.campaign) {
+            campaignMatch = lead.campaign.toLowerCase() === camp.campaign_name.toLowerCase();
+          } else {
+            campaignMatch = false;
+          }
+        }
+        if (this.state.selectedMetaAdsetId) {
+          const adset = (this.state.metaData?.adsets || []).find(a => a.adset_id === this.state.selectedMetaAdsetId);
+          if (adset && lead.adset) {
+            adsetMatch = lead.adset.toLowerCase() === adset.adset_name.toLowerCase();
+          } else {
+            adsetMatch = false;
+          }
+        }
+
+        if (campaignMatch && adsetMatch) {
+          const cleanName = creativeCrmName.replace(/\s*\[V\d+\]$/i, '').trim();
+          if (!creativeGroups[cleanName]) {
+            creativeGroups[cleanName] = {
+              name: cleanName,
+              spend: 0,
+              clicks: 0,
+              conversasMeta: 0,
+              crmLeads: 0,
+              crmConversas: 0,
+              crmVendas: 0,
+              previewUrl: lead.anuncio_preview || ''
+            };
+          }
+          creativeGroups[cleanName].crmLeads++;
+          if (lead.phase === 'Converteu') creativeGroups[cleanName].crmVendas++;
+          if (activePhases.includes(lead.phase)) creativeGroups[cleanName].crmConversas++;
+          if (lead.anuncio_preview && !creativeGroups[cleanName].previewUrl) {
+            creativeGroups[cleanName].previewUrl = lead.anuncio_preview;
+          }
+        }
+      }
+    });
+
+    let creativeList = Object.values(creativeGroups);
+    const query = this.state.creativeSearchQuery || '';
+    if (query) {
+      creativeList = creativeList.filter(c => c.name.toLowerCase().includes(query));
+    }
+
+    if (creativeList.length === 0) {
+      alert('Nenhum dado de criativo disponível para exportar.');
       return;
     }
 
-    const headers = ['Data', 'Nome', 'Telefone', 'Fase', 'Plataforma', 'Dispositivo', 'Campanha', 'Conjunto', 'Criativo', 'Copy'];
-    const rows = this.state.filteredLeads.map(lead => [
-      lead.date,
-      lead.name,
-      lead.phone,
-      lead.phase || 'Lead',
-      lead.platform,
-      lead.device,
-      lead.campaign,
-      lead.adset,
-      lead.creative,
-      lead.copy
-    ]);
+    creativeList.sort((a, b) => b.spend - a.spend);
 
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // Byte Order Mark para UTF-8 no Excel
+    const headers = [
+      'Criativo', 'Cliques', 'Conversas Iniciadas (Meta)', 'Conversas Reais (Planilha)',
+      'Leads (Planilha)', 'Vendas (Planilha)', 'Custo/Conv. Iniciada', 'Custo/Conv. Real',
+      'Custo/Lead', 'Custo/Venda', 'Link Preview'
+    ];
+
+    const rows = creativeList.map(c => {
+      const costPerConvIniciada = c.conversasMeta > 0 ? (c.spend / c.conversasMeta) : 0;
+      const costPerConvReal = c.crmConversas > 0 ? (c.spend / c.crmConversas) : 0;
+      const cpl = c.crmLeads > 0 ? (c.spend / c.crmLeads) : 0;
+      const cac = c.crmVendas > 0 ? (c.spend / c.crmVendas) : 0;
+
+      return [
+        c.name,
+        c.clicks,
+        c.conversasMeta,
+        c.crmConversas,
+        c.crmLeads,
+        c.crmVendas,
+        c.conversasMeta > 0 ? costPerConvIniciada.toFixed(2) : '-',
+        c.crmConversas > 0 ? costPerConvReal.toFixed(2) : '-',
+        c.crmLeads > 0 ? cpl.toFixed(2) : '-',
+        c.crmVendas > 0 ? cac.toFixed(2) : '-',
+        c.previewUrl || '-'
+      ];
+    });
+
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     csvContent += headers.join(";") + "\n";
     rows.forEach(row => {
       const sanitizedRow = row.map(val => {
-        const clean = (val || '').replace(/"/g, '""');
+        const clean = String(val || '').replace(/"/g, '""');
         return `"${clean}"`;
       });
       csvContent += sanitizedRow.join(";") + "\n";
@@ -1053,7 +1275,7 @@ const App = {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    const filename = `leads_${this.state.selectedClient.toLowerCase().replace(/ /g, '_')}_export.csv`;
+    const filename = `criativos_${this.state.selectedClient.toLowerCase().replace(/ /g, '_')}_export.csv`;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
@@ -1071,18 +1293,25 @@ const App = {
       const now = new Date();
       const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
       
+      let iconHtml = '';
+      if (type === 'ERROR') iconHtml = '<i class="fa-solid fa-circle-xmark" style="color: #ef4444; font-size: 0.8rem; margin-top: 3px;"></i>';
+      else if (type === 'WARNING') iconHtml = '<i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b; font-size: 0.8rem; margin-top: 3px;"></i>';
+      else if (type === 'SUCCESS') iconHtml = '<i class="fa-solid fa-circle-check" style="color: #10b981; font-size: 0.8rem; margin-top: 3px;"></i>';
+      else iconHtml = '<i class="fa-solid fa-circle-info" style="color: #60a5fa; font-size: 0.8rem; margin-top: 3px;"></i>';
+
       const logEntry = document.createElement('div');
       logEntry.className = `log-entry ${type.toLowerCase()}`;
       logEntry.innerHTML = `
         <span class="log-time">[${timeStr}]</span>
+        <span class="log-icon" style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 14px;">${iconHtml}</span>
         <span class="log-source">[${source}]</span>
-        <span class="log-message">${message}</span>
+        <span class="log-message" style="word-break: break-word;">${message}</span>
       `;
       
       consoleOutput.appendChild(logEntry);
       
-      // Limita número máximo de logs na tela a 200 por questões de performance
-      if (consoleOutput.children.length > 200) {
+      // Limita número máximo de logs na tela a 300 por questões de performance
+      if (consoleOutput.children.length > 300) {
         consoleOutput.removeChild(consoleOutput.firstChild);
       }
       
@@ -1286,9 +1515,7 @@ const App = {
       <th style="padding: 10px 12px; text-align: right;">Cliques</th>
       <th style="padding: 10px 12px; text-align: right;">Resultados</th>
       <th style="padding: 10px 12px; text-align: right;">Conversas</th>
-      <th style="padding: 10px 12px; text-align: right;">Seguidores</th>
       <th style="padding: 10px 12px; text-align: right;">Custo por Lead</th>
-      <th style="padding: 10px 12px; text-align: right;">Custo/Seguidor</th>
     `;
 
     if (level === 'campaign') {
@@ -1309,7 +1536,7 @@ const App = {
     }
 
     if (dataRows.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--text-secondary);">Nenhum registro encontrado.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-secondary);">Nenhum registro encontrado.</td></tr>`;
       return;
     }
 
@@ -1354,14 +1581,10 @@ const App = {
       }
 
       const cpl = crmLeadsCount > 0 ? (row.spend / crmLeadsCount) : 0;
-      const cps = row.seguidores > 0 ? (row.spend / row.seguidores) : 0;
 
       const formattedSpend = 'R$ ' + row.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const formattedCpl = crmLeadsCount > 0 
         ? 'R$ ' + cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : '-';
-      const formattedCps = row.seguidores > 0 
-        ? 'R$ ' + cps.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '-';
 
       const conversasCell = `${row.conversas} (${crmLeadsCount})`;
@@ -1376,9 +1599,7 @@ const App = {
           <td style="padding: 10px 12px; text-align: right;">${row.clicks.toLocaleString('pt-BR')}</td>
           <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--primary);">${row.conversas.toLocaleString('pt-BR')}</td>
           <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--primary);">${conversasCell}</td>
-          <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--success);">${row.seguidores.toLocaleString('pt-BR')}</td>
           <td style="padding: 10px 12px; text-align: right;">${formattedCpl}</td>
-          <td style="padding: 10px 12px; text-align: right;">${formattedCps}</td>
         </tr>
       `;
     });
@@ -1520,7 +1741,7 @@ const App = {
     ChartsManager.updateCharts(this.state.filteredLeads);
     ChartsManager.updateUtmRanking(this.state.filteredLeads, this.state.activeUtmTab);
     
-    this.renderTable();
+    this.renderCreativePerformanceTable();
   }
 };
 

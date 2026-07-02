@@ -336,14 +336,10 @@
             <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Alcance (Reach)</span>
             <span class="meta-kpi-val" id="meta-audit-reach" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-1); margin-top: 8px;">0</span>
           </div>
-          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
-            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Seguidores Gerados</span>
-            <span class="meta-kpi-val" id="meta-audit-followers" style="font-size: 1.4rem; font-weight: 700; color: var(--success); margin-top: 8px;">0</span>
-          </div>
         </div>
 
-        <!-- Primeira Fileira: Explorer Table & Funil SVG/CSS -->
-        <div class="meta-audit-row-1" style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; margin-bottom: 24px;">
+        <!-- Primeira Fileira: Explorer Table, Funil SVG/CSS & Canais Meta -->
+        <div class="meta-audit-row-1" style="display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 20px; margin-bottom: 24px;">
           <!-- Tabela Exploradora -->
           <div class="meta-explorer-panel glass-panel" style="padding: 20px; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01);">
             <div class="explorer-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
@@ -382,41 +378,6 @@
               <!-- Desenhado dinamicamente por JS -->
             </div>
           </div>
-        </div>
-
-        <!-- Segunda Fileira: Regiões (Cliques vs Conversas) & Distribuição de Plataformas -->
-        <div class="meta-audit-row-2" style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px;">
-          <!-- Gráfico de Estados & Tabela de Estados -->
-          <div class="meta-regions-panel glass-panel" style="padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01); display: flex; flex-direction: column;">
-            <h4 class="chart-title" style="font-size: 0.95rem; font-weight: 600; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-map-location-dot" style="color: var(--accent-2); filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.3));"></i>
-              Auditoria Geográfica (Cliques vs. Conversas por Estado)
-            </h4>
-            <div class="regions-content" style="display: flex; flex-direction: column; gap: 20px;">
-              <div id="chart-regions-comparison" style="min-height: 250px; width: 100%;"></div>
-              
-              <div class="regions-table-wrapper" style="overflow-x: auto; max-height: 300px; width: 100%;">
-                <table class="regions-table-data" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.76rem;">
-                  <thead>
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary);">
-                      <th style="padding: 6px 4px;">Estado</th>
-                      <th style="padding: 6px 4px; text-align: right;">Investido</th>
-                      <th style="padding: 6px 4px; text-align: right;">Cliques</th>
-                      <th style="padding: 6px 4px; text-align: right;">Resultados (Meta)</th>
-                      <th style="padding: 6px 4px; text-align: right;">Conversas (CRM)</th>
-                      <th style="padding: 6px 4px; text-align: right;">Leads (CRM)</th>
-                      <th style="padding: 6px 4px; text-align: right;">Custo/Conversa</th>
-                      <th style="padding: 6px 4px; text-align: right;">Seguidores</th>
-                      <th style="padding: 6px 4px; text-align: right;">Custo/Seguidor</th>
-                    </tr>
-                  </thead>
-                  <tbody id="regions-table-body">
-                    <!-- Dinâmico via JS -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
 
           <!-- Distribuição por Plataforma -->
           <div class="meta-platforms-panel glass-panel" style="padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01); display: flex; flex-direction: column;">
@@ -447,19 +408,19 @@
           </div>
         </div>
 
-        <!-- Tabela de Leads Detalhada -->
+        <!-- Tabela de Desempenho de Criativos (Performance de Anúncios) -->
         <div class="table-container glass-panel animate-fade-in">
           <div class="table-header">
             <div class="table-header-left">
-              <h3 class="chart-title">Base de Leads</h3>
-              <span id="table-counter" class="leads-counter">0 leads encontrados</span>
+              <h3 class="chart-title">Desempenho de Criativos (Anúncios)</h3>
+              <span id="creative-table-counter" class="leads-counter">0 criativos encontrados</span>
             </div>
             <div class="table-actions">
               <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="table-search" placeholder="Buscar por nome, telefone, campanha...">
+                <input type="text" id="creative-table-search" placeholder="Buscar criativo por nome...">
               </div>
-              <button id="btn-export-csv" class="btn-action">
+              <button id="btn-export-creative-csv" class="btn-action">
                 <i class="fa-solid fa-file-excel"></i> Exportar CSV
               </button>
             </div>
@@ -469,32 +430,23 @@
             <table class="leads-table">
               <thead>
                 <tr>
-                  <th>Data/Hora</th>
-                  <th>Nome</th>
-                  <th>Telefone</th>
-                  <th>Fase</th>
-                  <th>Canal</th>
-                  <th>Dispositivo</th>
-                  <th>Campanha</th>
-                  <th>Conjunto</th>
-                  <th>Criativo</th>
-                  <th>Copy</th>
+                  <th style="padding: 10px; width: 60px; text-align: center;">Preview</th>
+                  <th style="padding: 10px;">Criativo</th>
+                  <th style="padding: 10px; text-align: right;">Cliques</th>
+                  <th style="padding: 10px; text-align: right;">Conv. Iniciadas (Meta)</th>
+                  <th style="padding: 10px; text-align: right;">Conv. Reais (Planilha)</th>
+                  <th style="padding: 10px; text-align: right;">Leads (Planilha)</th>
+                  <th style="padding: 10px; text-align: right;">Vendas (Planilha)</th>
+                  <th style="padding: 10px; text-align: right;">Custo/Conv. Iniciada</th>
+                  <th style="padding: 10px; text-align: right;">Custo/Conv. Real</th>
+                  <th style="padding: 10px; text-align: right;">Custo/Lead</th>
+                  <th style="padding: 10px; text-align: right;">Custo/Venda</th>
                 </tr>
               </thead>
-              <tbody id="leads-table-body">
+              <tbody id="creative-table-body">
                 <!-- Populado via JS -->
               </tbody>
             </table>
-          </div>
-
-          <div class="table-footer">
-            <button id="btn-prev-page" class="pagination-btn" disabled>
-              <i class="fa-solid fa-angle-left"></i> Anterior
-            </button>
-            <span id="page-indicator" class="page-indicator">Página 1 de 1</span>
-            <button id="btn-next-page" class="pagination-btn" disabled>
-              Próximo <i class="fa-solid fa-angle-right"></i>
-            </button>
           </div>
         </div>
       </section>

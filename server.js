@@ -156,7 +156,8 @@ const COLUMN_MAPPINGS = {
   campaign: ['campanha', 'campaign', 'utm_campaign', 'nome da campanha'],
   adset: ['conjunto', 'conjunto de anúncios', 'adset', 'ad set', 'utm_medium', 'grupo de anúncios'],
   creative: ['anuncio', 'criativo', 'creative', 'utm_content', 'anúncio', 'ad'],
-  copy: ['criativo_copy', 'copy', 'texto', 'utm_term', 'redação', 'copywriting']
+  copy: ['criativo_copy', 'copy', 'texto', 'utm_term', 'redação', 'copywriting'],
+  anuncio_preview: ['anuncio_preview', 'preview', 'link_preview', 'preview_anuncio', 'link do anuncio', 'preview do anúncio']
 };
 
 // ==========================================================================
@@ -475,7 +476,6 @@ app.get('/api/meta-insights', async (req, res) => {
       const clicks = Math.floor(impressions * (0.015 + i * 0.005));
       const reach = Math.floor(impressions * 0.85);
       const conversas = Math.floor(clicks * (0.08 + i * 0.03));
-      const seguidores = Math.floor(clicks * 0.05);
 
       return {
         campaign_id: campId,
@@ -485,10 +485,8 @@ app.get('/api/meta-insights', async (req, res) => {
         clicks,
         reach,
         conversas,
-        seguidores,
         actions: [
-          { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
-          { action_type: 'page_like', value: String(seguidores) }
+          { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
         ]
       };
     });
@@ -503,7 +501,6 @@ app.get('/api/meta-insights', async (req, res) => {
         const clicks = Math.floor(camp.clicks / 3);
         const reach = Math.floor(camp.reach / 3);
         const conversas = Math.floor(camp.conversas / 3);
-        const seguidores = Math.floor(camp.seguidores / 3);
 
         mockAdsets.push({
           adset_id: setId,
@@ -515,10 +512,8 @@ app.get('/api/meta-insights', async (req, res) => {
           clicks,
           reach,
           conversas,
-          seguidores,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
-            { action_type: 'page_like', value: String(seguidores) }
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
           ]
         });
       });
@@ -534,7 +529,6 @@ app.get('/api/meta-insights', async (req, res) => {
         const clicks = Math.floor(adset.clicks / 3);
         const reach = Math.floor(adset.reach / 3);
         const conversas = Math.floor(adset.conversas / 3);
-        const seguidores = Math.floor(adset.seguidores / 3);
 
         mockAds.push({
           ad_id: adId,
@@ -548,63 +542,14 @@ app.get('/api/meta-insights', async (req, res) => {
           clicks,
           reach,
           conversas,
-          seguidores,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
-            { action_type: 'page_like', value: String(seguidores) }
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
           ]
         });
       });
     });
 
-    // 4. Gerar Regiões (Estados) - Simulação do caso "SP vs PR" com escala por data
-    const mockRegions = [];
-    const estados = [
-      { name: "São Paulo", sigla: "SP", clickRate: 0.50, convRate: 0.002, spendWeight: 0.40 }, // SP: muito clique, pouquíssimas conversas
-      { name: "Paraná", sigla: "PR", clickRate: 0.08, convRate: 0.15, spendWeight: 0.15 },    // PR: poucos cliques, muitas conversas reais
-      { name: "Minas Gerais", sigla: "MG", clickRate: 0.15, convRate: 0.07, spendWeight: 0.18 },
-      { name: "Rio de Janeiro", sigla: "RJ", clickRate: 0.12, convRate: 0.05, spendWeight: 0.12 },
-      { name: "Rio Grande do Sul", sigla: "RS", clickRate: 0.08, convRate: 0.06, spendWeight: 0.08 },
-      { name: "Santa Catarina", sigla: "SC", clickRate: 0.07, convRate: 0.07, spendWeight: 0.07 }
-    ];
-
-    mockCampaigns.forEach((camp) => {
-      estados.forEach((est) => {
-        const spend = parseFloat((camp.spend * est.spendWeight).toFixed(2));
-        const clicks = Math.floor(camp.clicks * est.clickRate);
-        const impressions = Math.floor(camp.impressions * est.spendWeight);
-        const reach = Math.floor(camp.reach * est.spendWeight);
-        
-        let conversas = 0;
-        if (est.sigla === 'SP') {
-          conversas = Math.max(0, Math.round((Math.floor(Math.random() * 2) + 1) * dateScale)); // SP: muito clique, pouquíssimas conversas
-        } else if (est.sigla === 'PR') {
-          conversas = Math.floor(clicks * est.convRate) + Math.max(1, Math.round(8 * dateScale)); // PR: poucos cliques, muitas conversas reais
-        } else {
-          conversas = Math.max(0, Math.floor(clicks * est.convRate));
-        }
-        
-        const seguidores = Math.max(0, Math.floor(clicks * 0.03));
-
-        mockRegions.push({
-          campaign_id: camp.campaign_id,
-          campaign_name: camp.campaign_name,
-          region: est.name,
-          spend,
-          clicks,
-          impressions,
-          reach,
-          conversas,
-          seguidores,
-          actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
-            { action_type: 'page_like', value: String(seguidores) }
-          ]
-        });
-      });
-    });
-
-    // 5. Gerar Plataformas (publisher_platform)
+    // 4. Gerar Plataformas (publisher_platform)
     const mockPlatforms = [];
     const platformsList = [
       { name: "instagram", weight: 0.65 },
@@ -620,7 +565,6 @@ app.get('/api/meta-insights', async (req, res) => {
         const impressions = Math.floor(camp.impressions * plat.weight);
         const reach = Math.floor(camp.reach * plat.weight);
         const conversas = Math.max(0, Math.floor(camp.conversas * plat.weight));
-        const seguidores = Math.max(0, Math.floor(camp.seguidores * plat.weight));
 
         mockPlatforms.push({
           campaign_id: camp.campaign_id,
@@ -631,10 +575,8 @@ app.get('/api/meta-insights', async (req, res) => {
           impressions,
           reach,
           conversas,
-          seguidores,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) },
-            { action_type: 'page_like', value: String(seguidores) }
+            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
           ]
         });
       });
@@ -648,21 +590,23 @@ app.get('/api/meta-insights', async (req, res) => {
       campaigns: mockCampaigns,
       adsets: mockAdsets,
       creatives: mockAds,
-      regions: mockRegions,
       platforms: mockPlatforms,
       logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Iniciando consulta simulada para a conta ${targetAccount} - ${periodLabel}` },
-        { type: 'INFO', source: 'Meta API v25.0', message: `Consultando breakdowns por Região (Estados) e Plataformas...` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Retornados registros fictícios para o cliente '${client}' no Modo Demo.` }
+        { type: 'INFO', source: 'Meta Proxy', message: `[Simulação] Iniciando consulta simulada para a conta ${targetAccount} (Cliente: '${client}').` },
+        { type: 'INFO', source: 'Meta Proxy', message: `[Simulação] Parâmetros de data: ${periodLabel} | Escala de período calculada: x${dateScale.toFixed(4)}` },
+        { type: 'INFO', source: 'Meta Proxy', message: `[Simulação] Mocking de ${mockCampaigns.length} campanhas, ${mockAdsets.length} conjuntos, ${mockAds.length} criativos.` },
+        { type: 'SUCCESS', source: 'Meta Proxy', message: `Retornados registros fictícios com sucesso no Modo Demo.` }
       ]
     });
   }
 
   // Modo Real
+  const logsList = [];
+  logsList.push({ type: 'INFO', source: 'Meta Proxy', message: `Iniciando consulta real para a conta ${actId} (Período: ${startDate && endDate ? `${startDate} a ${endDate}` : `Últimos ${limitDays} dias`}).` });
+
   let token = null;
 
   if (actId) {
-    // Tenta encontrar o mapeamento que possui este ID de conta de anúncio
     const cleanActId = actId.replace('act_', '');
     const mappings = readMappings();
     const mapping = mappings.find(m => {
@@ -672,16 +616,21 @@ app.get('/api/meta-insights', async (req, res) => {
 
     if (mapping && mapping.meta_access_token) {
       token = mapping.meta_access_token;
+      logsList.push({ type: 'INFO', source: 'Meta Auth', message: `Token de acesso OAuth2 personalizado encontrado para a conta ${actId}.` });
     }
   }
 
   // Fallback para o token geral do .env
   if (!token) {
     token = process.env.META_ACCESS_TOKEN;
+    if (token) {
+      logsList.push({ type: 'WARNING', source: 'Meta Auth', message: `Utilizando token de acesso padrão do arquivo .env.` });
+    }
   }
 
   if (!token || !actId) {
-    return res.status(400).json({ error: 'Chave de acesso (Token) ou Conta de Anúncios do Meta não configurados no servidor para esta conta.' });
+    logsList.push({ type: 'ERROR', source: 'Meta Auth', message: `Falha de autenticação: Token ou conta de anúncios não configurados.` });
+    return res.status(400).json({ error: 'Chave de acesso (Token) ou Conta de Anúncios do Meta não configurados no servidor para esta conta.', logs: logsList });
   }
 
   if (!actId.startsWith('act_')) {
@@ -710,8 +659,16 @@ app.get('/api/meta-insights', async (req, res) => {
     
     // Função auxiliar robusta para buscar insights com tratamento de erros por chamada
     const fetchInsights = async (level, extraParams = {}) => {
+      const url = `https://graph.facebook.com/v25.0/${actId}/insights`;
+      
+      logsList.push({ 
+        type: 'INFO', 
+        source: 'Meta HTTP Request', 
+        message: `GET ${url} | Params: level=${level}, time_range=${timeRange}, fields=${extraParams.fields || ''}${extraParams.breakdowns ? `, breakdowns=${extraParams.breakdowns}` : ''}`
+      });
+
       try {
-        const apiResponse = await axios.get(`https://graph.facebook.com/v25.0/${actId}/insights`, {
+        const apiResponse = await axios.get(url, {
           params: {
             access_token: token,
             level,
@@ -723,69 +680,90 @@ app.get('/api/meta-insights', async (req, res) => {
         
         const rawData = apiResponse.data?.data || [];
         
-        // Pós-processa cada registro inserindo 'conversas' e 'seguidores'
+        logsList.push({
+          type: 'INFO',
+          source: 'Meta HTTP Response',
+          message: `GET ${url} [level=${level}] retornado ${rawData.length} registros.`
+        });
+        
+        // Pós-processa cada registro inserindo 'conversas'
         return rawData.map(item => {
           let conversas = 0;
-          let seguidores = 0;
+          let actionsSummary = [];
+
           if (Array.isArray(item.actions)) {
-            item.actions.forEach(act => {
-              const type = act.action_type || '';
-              const val = parseInt(act.value || 0, 10);
-              if (type.includes('messaging_first_reply') || 
-                  type.includes('messaging_conversation_started') || 
-                  type.includes('onsite_conversion.messaging_first_reply') ||
-                  type.includes('onsite_conversion.messaging_conversation_started') ||
-                  type === 'messaging_first_reply') {
-                conversas += val;
+            // Mapeia todas as ações retornadas pelo Meta para exibição no log
+            actionsSummary = item.actions.map(act => `${act.action_type}: ${act.value}`);
+
+            // Priorização para evitar somas duplicadas de ações correspondentes ao mesmo clique
+            const firstReply = item.actions.find(act => act.action_type === 'onsite_conversion.messaging_first_reply' || act.action_type === 'messaging_first_reply');
+            const convStarted = item.actions.find(act => act.action_type === 'onsite_conversion.messaging_conversation_started_7d' || act.action_type === 'messaging_conversation_started_7d' || act.action_type === 'messaging_conversation_started');
+            
+            if (firstReply) {
+              conversas = parseInt(firstReply.value || 0, 10);
+            } else if (convStarted) {
+              conversas = parseInt(convStarted.value || 0, 10);
+            } else {
+              const anyMsg = item.actions.find(act => 
+                act.action_type.includes('messaging_first_reply') || 
+                act.action_type.includes('messaging_conversation_started')
+              );
+              if (anyMsg) {
+                conversas = parseInt(anyMsg.value || 0, 10);
               }
-              if (type === 'page_like' || type === 'like' || type.includes('page_like')) {
-                seguidores += val;
-              }
-            });
+            }
           }
+
+          const recordName = item.campaign_name || item.adset_name || item.ad_name || item.campaign_id;
+          logsList.push({
+            type: 'INFO',
+            source: 'Meta Action Parser',
+            message: `Registro: "${recordName}" | Ações originais do Meta: [${actionsSummary.join(', ') || 'Nenhuma'}]. Conversas calculadas: ${conversas}`
+          });
+
           return {
             ...item,
             spend: parseFloat(item.spend || 0),
             clicks: parseInt(item.clicks || 0, 10),
             impressions: parseInt(item.impressions || 0, 10),
             reach: parseInt(item.reach || 0, 10),
-            conversas,
-            seguidores
+            conversas
           };
         });
       } catch (err) {
         const errMsg = err.response?.data?.error?.message || err.message;
+        logsList.push({
+          type: 'ERROR',
+          source: 'Meta HTTP Error',
+          message: `Falha na requisição [level=${level}]: ${errMsg}`
+        });
         console.error(`Erro ao buscar insights do Meta (${level}):`, errMsg);
         return [];
       }
     };
 
-    // Dispara chamadas de insights em paralelo
-    const [campaigns, adsets, creatives, regions, platforms] = await Promise.all([
+    // Dispara chamadas de insights em paralelo (removido regions)
+    const [campaigns, adsets, creatives, platforms] = await Promise.all([
       fetchInsights('campaign', { fields: 'campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
       fetchInsights('adset', { fields: 'adset_name,adset_id,campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
       fetchInsights('ad', { fields: 'ad_name,ad_id,adset_name,adset_id,campaign_name,campaign_id,spend,clicks,impressions,reach,actions' }),
-      fetchInsights('campaign', { breakdowns: 'region', fields: 'campaign_id,spend,clicks,impressions,reach,actions', limit: 500 }),
       fetchInsights('campaign', { breakdowns: 'publisher_platform', fields: 'campaign_id,spend,clicks,impressions,reach,actions', limit: 500 })
     ]);
+
+    logsList.push({ type: 'SUCCESS', source: 'Meta Proxy', message: `Processamento concluído com sucesso. Retornados: ${campaigns.length} campanhas, ${adsets.length} conjuntos, ${creatives.length} criativos.` });
 
     res.json({
       campaigns,
       adsets,
       creatives,
-      regions,
       platforms,
-      logs: [
-        { type: 'INFO', source: 'Meta API v25.0', message: `Consulta efetuada na conta ${actId}.` },
-        { type: 'INFO', source: 'Meta API v25.0', message: `Retornados ${campaigns.length} campanhas, ${adsets.length} conjuntos, ${creatives.length} criativos.` },
-        { type: 'INFO', source: 'Meta API v25.0', message: `Filtros regional (região) e plataforma extraídos com sucesso.` },
-        { type: 'SUCCESS', source: 'Meta API v25.0', message: `Sucesso no processamento dos insights ampliado v25.0.` }
-      ]
+      logs: logsList
     });
   } catch (err) {
     const apiError = err.response?.data?.error?.message || err.message;
     console.error('Erro na API do Meta:', apiError);
-    res.status(500).json({ error: 'Meta API Error: ' + apiError });
+    logsList.push({ type: 'ERROR', source: 'Meta Proxy Fatal', message: `Erro fatal no processador: ${apiError}` });
+    res.status(500).json({ error: 'Meta API Error: ' + apiError, logs: logsList });
   }
 });
 
