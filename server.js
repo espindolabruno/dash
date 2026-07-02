@@ -476,6 +476,8 @@ app.get('/api/meta-insights', async (req, res) => {
       const clicks = Math.floor(impressions * (0.015 + i * 0.005));
       const reach = Math.floor(impressions * 0.85);
       const conversas = Math.floor(clicks * (0.08 + i * 0.03));
+      const leads = Math.floor(conversas * 0.40);
+      const compras = Math.floor(conversas * 0.10);
 
       return {
         campaign_id: campId,
@@ -485,8 +487,12 @@ app.get('/api/meta-insights', async (req, res) => {
         clicks,
         reach,
         conversas,
+        leads,
+        compras,
         actions: [
-          { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
+          { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: String(conversas) },
+          { action_type: 'onsite_conversion.lead', value: String(leads) },
+          { action_type: 'omni_purchase', value: String(compras) }
         ]
       };
     });
@@ -501,6 +507,8 @@ app.get('/api/meta-insights', async (req, res) => {
         const clicks = Math.floor(camp.clicks / 3);
         const reach = Math.floor(camp.reach / 3);
         const conversas = Math.floor(camp.conversas / 3);
+        const leads = Math.floor(camp.leads / 3);
+        const compras = Math.floor(camp.compras / 3);
 
         mockAdsets.push({
           adset_id: setId,
@@ -512,8 +520,12 @@ app.get('/api/meta-insights', async (req, res) => {
           clicks,
           reach,
           conversas,
+          leads,
+          compras,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
+            { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: String(conversas) },
+            { action_type: 'onsite_conversion.lead', value: String(leads) },
+            { action_type: 'omni_purchase', value: String(compras) }
           ]
         });
       });
@@ -529,6 +541,8 @@ app.get('/api/meta-insights', async (req, res) => {
         const clicks = Math.floor(adset.clicks / 3);
         const reach = Math.floor(adset.reach / 3);
         const conversas = Math.floor(adset.conversas / 3);
+        const leads = Math.floor(adset.leads / 3);
+        const compras = Math.floor(adset.compras / 3);
 
         mockAds.push({
           ad_id: adId,
@@ -542,8 +556,12 @@ app.get('/api/meta-insights', async (req, res) => {
           clicks,
           reach,
           conversas,
+          leads,
+          compras,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
+            { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: String(conversas) },
+            { action_type: 'onsite_conversion.lead', value: String(leads) },
+            { action_type: 'omni_purchase', value: String(compras) }
           ]
         });
       });
@@ -565,6 +583,8 @@ app.get('/api/meta-insights', async (req, res) => {
         const impressions = Math.floor(camp.impressions * plat.weight);
         const reach = Math.floor(camp.reach * plat.weight);
         const conversas = Math.max(0, Math.floor(camp.conversas * plat.weight));
+        const leads = Math.max(0, Math.floor(camp.leads * plat.weight));
+        const compras = Math.max(0, Math.floor(camp.compras * plat.weight));
 
         mockPlatforms.push({
           campaign_id: camp.campaign_id,
@@ -575,8 +595,12 @@ app.get('/api/meta-insights', async (req, res) => {
           impressions,
           reach,
           conversas,
+          leads,
+          compras,
           actions: [
-            { action_type: 'onsite_conversion.messaging_first_reply', value: String(conversas) }
+            { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: String(conversas) },
+            { action_type: 'onsite_conversion.lead', value: String(leads) },
+            { action_type: 'omni_purchase', value: String(compras) }
           ]
         });
       });
@@ -686,39 +710,43 @@ app.get('/api/meta-insights', async (req, res) => {
           message: `GET ${url} [level=${level}] retornado ${rawData.length} registros.`
         });
         
-        // Pós-processa cada registro inserindo 'conversas'
+        // Pós-processa cada registro inserindo 'conversas', 'leads' e 'compras'
         return rawData.map(item => {
           let conversas = 0;
+          let leads = 0;
+          let compras = 0;
           let actionsSummary = [];
 
           if (Array.isArray(item.actions)) {
             // Mapeia todas as ações retornadas pelo Meta para exibição no log
             actionsSummary = item.actions.map(act => `${act.action_type}: ${act.value}`);
 
-            // Priorização para evitar somas duplicadas de ações correspondentes ao mesmo clique
-            const firstReply = item.actions.find(act => act.action_type === 'onsite_conversion.messaging_first_reply' || act.action_type === 'messaging_first_reply');
-            const convStarted = item.actions.find(act => act.action_type === 'onsite_conversion.messaging_conversation_started_7d' || act.action_type === 'messaging_conversation_started_7d' || act.action_type === 'messaging_conversation_started');
-            
-            if (firstReply) {
-              conversas = parseInt(firstReply.value || 0, 10);
-            } else if (convStarted) {
-              conversas = parseInt(convStarted.value || 0, 10);
-            } else {
-              const anyMsg = item.actions.find(act => 
-                act.action_type.includes('messaging_first_reply') || 
-                act.action_type.includes('messaging_conversation_started')
-              );
-              if (anyMsg) {
-                conversas = parseInt(anyMsg.value || 0, 10);
-              }
-            }
+            // 1. Extração de Conversas Iniciadas: prioriza onsite_conversion.messaging_conversation_started_7d
+            const targetConv = item.actions.find(act => act.action_type === 'onsite_conversion.messaging_conversation_started_7d');
+            const fallbackConv = item.actions.find(act => 
+              act.action_type === 'messaging_conversation_started_7d' || 
+              act.action_type === 'onsite_conversion.messaging_first_reply' || 
+              act.action_type === 'messaging_first_reply' || 
+              act.action_type.includes('messaging_conversation_started')
+            );
+            conversas = targetConv ? parseInt(targetConv.value || 0, 10) : (fallbackConv ? parseInt(fallbackConv.value || 0, 10) : 0);
+
+            // 2. Extração de Leads do Meta: prioriza onsite_conversion.lead
+            const targetLead = item.actions.find(act => act.action_type === 'onsite_conversion.lead');
+            const fallbackLead = item.actions.find(act => act.action_type === 'lead' || act.action_type.includes('lead'));
+            leads = targetLead ? parseInt(targetLead.value || 0, 10) : (fallbackLead ? parseInt(fallbackLead.value || 0, 10) : 0);
+
+            // 3. Extração de Compras/Vendas do Meta: prioriza omni_purchase
+            const targetPurchase = item.actions.find(act => act.action_type === 'omni_purchase');
+            const fallbackPurchase = item.actions.find(act => act.action_type === 'purchase' || act.action_type.includes('purchase'));
+            compras = targetPurchase ? parseInt(targetPurchase.value || 0, 10) : (fallbackPurchase ? parseInt(fallbackPurchase.value || 0, 10) : 0);
           }
 
           const recordName = item.campaign_name || item.adset_name || item.ad_name || item.campaign_id;
           logsList.push({
             type: 'INFO',
             source: 'Meta Action Parser',
-            message: `Registro: "${recordName}" | Ações originais do Meta: [${actionsSummary.join(', ') || 'Nenhuma'}]. Conversas calculadas: ${conversas}`
+            message: `Registro: "${recordName}" | Ações originais: [${actionsSummary.join(', ') || 'Nenhuma'}]. Conversas: ${conversas}, Leads: ${leads}, Compras: ${compras}`
           });
 
           return {
@@ -727,7 +755,9 @@ app.get('/api/meta-insights', async (req, res) => {
             clicks: parseInt(item.clicks || 0, 10),
             impressions: parseInt(item.impressions || 0, 10),
             reach: parseInt(item.reach || 0, 10),
-            conversas
+            conversas,
+            leads,
+            compras
           };
         });
       } catch (err) {
