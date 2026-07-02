@@ -319,22 +319,31 @@
         </div>
 
         <!-- Linha de KPIs de Auditoria Meta -->
-        <div class="meta-kpis-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="meta-kpis-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          <!-- 1. Investimento Meta -->
           <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
             <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Investimento Meta</span>
             <span class="meta-kpi-val" id="meta-audit-spend" style="font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 8px;">R$ 0,00</span>
           </div>
+          <!-- 2. Alcance -->
+          <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Alcance</span>
+            <span class="meta-kpi-val" id="meta-audit-reach" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-1); margin-top: 8px;">0</span>
+          </div>
+          <!-- 3. Conversas Iniciadas (CRM Planilha) -->
           <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
             <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Conversas Iniciadas</span>
             <span class="meta-kpi-val" id="meta-audit-conversations" style="font-size: 1.4rem; font-weight: 700; color: var(--primary); margin-top: 8px;">0</span>
           </div>
+          <!-- 4. Compras -->
           <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
-            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">CPA de Conversa</span>
-            <span class="meta-kpi-val" id="meta-audit-cpa" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-2); margin-top: 8px;">R$ 0,00</span>
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Compras</span>
+            <span class="meta-kpi-val" id="meta-audit-compras" style="font-size: 1.4rem; font-weight: 700; color: var(--success); margin-top: 8px;">0</span>
           </div>
+          <!-- 5. Custo por Compra -->
           <div class="meta-kpi-subcard glass-panel" style="padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column;">
-            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Alcance (Reach)</span>
-            <span class="meta-kpi-val" id="meta-audit-reach" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-1); margin-top: 8px;">0</span>
+            <span class="meta-kpi-label" style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Custo por Compra</span>
+            <span class="meta-kpi-val" id="meta-audit-cpc" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-2); margin-top: 8px;">R$ 0,00</span>
           </div>
         </div>
 

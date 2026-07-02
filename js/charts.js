@@ -562,6 +562,7 @@ const ChartsManager = {
     let totalImpressions = 0;
     let totalReach = 0;
     let totalConversas = 0;
+    let totalCompras = 0;
 
     if (selectedAdId) {
       const targetAd = creatives.find(c => c.ad_id === selectedAdId);
@@ -571,6 +572,7 @@ const ChartsManager = {
         totalImpressions = targetAd.impressions;
         totalReach = targetAd.reach;
         totalConversas = targetAd.conversas;
+        totalCompras = targetAd.compras || 0;
       }
     } else if (selectedAdsetId) {
       const targetAdset = adsets.find(a => a.adset_id === selectedAdsetId);
@@ -580,6 +582,7 @@ const ChartsManager = {
         totalImpressions = targetAdset.impressions;
         totalReach = targetAdset.reach;
         totalConversas = targetAdset.conversas;
+        totalCompras = targetAdset.compras || 0;
       }
     } else if (selectedCampaignId) {
       const targetCamp = campaigns.find(c => c.campaign_id === selectedCampaignId);
@@ -589,6 +592,7 @@ const ChartsManager = {
         totalImpressions = targetCamp.impressions;
         totalReach = targetCamp.reach;
         totalConversas = targetCamp.conversas;
+        totalCompras = targetCamp.compras || 0;
       }
     } else {
       campaigns.forEach(c => {
@@ -597,16 +601,45 @@ const ChartsManager = {
         totalImpressions += c.impressions;
         totalReach += c.reach;
         totalConversas += c.conversas;
+        totalCompras += (c.compras || 0);
       });
     }
 
-    const cpa = totalConversas > 0 ? (totalSpend / totalConversas) : 0;
+    // Calcular leads do CRM locais filtrados pela seleção atual
+    let filteredCrmLeadsForKpi = localLeads;
+    if (activeCampaignName) {
+      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.campaign === activeCampaignName);
+    }
+    if (activeAdsetName) {
+      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.adset === activeAdsetName);
+    }
+    if (activeAdName) {
+      const cleanAdName = activeAdName.replace(/\s*\[V\d+\]$/, '');
+      filteredCrmLeadsForKpi = filteredCrmLeadsForKpi.filter(l => l.creative === cleanAdName || l.creative === activeAdName);
+    }
+    const totalLeadsCrm = filteredCrmLeadsForKpi.length;
+
+    const cpc = totalCompras > 0 ? (totalSpend / totalCompras) : 0;
 
     // Atualizar os KPIs na tela
-    document.getElementById('meta-audit-spend').textContent = 'R$ ' + totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    document.getElementById('meta-audit-conversations').textContent = totalConversas.toLocaleString('pt-BR');
-    document.getElementById('meta-audit-cpa').textContent = 'R$ ' + cpa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    document.getElementById('meta-audit-reach').textContent = totalReach.toLocaleString('pt-BR');
+    const spendEl = document.getElementById('meta-audit-spend');
+    if (spendEl) spendEl.textContent = 'R$ ' + totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    const reachEl = document.getElementById('meta-audit-reach');
+    if (reachEl) reachEl.textContent = totalReach.toLocaleString('pt-BR');
+
+    const conversationsEl = document.getElementById('meta-audit-conversations');
+    if (conversationsEl) conversationsEl.textContent = totalLeadsCrm.toLocaleString('pt-BR');
+
+    const comprasEl = document.getElementById('meta-audit-compras');
+    if (comprasEl) comprasEl.textContent = totalCompras.toLocaleString('pt-BR');
+
+    const cpcEl = document.getElementById('meta-audit-cpc');
+    if (cpcEl) {
+      cpcEl.textContent = totalCompras > 0 
+        ? 'R$ ' + cpc.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+    }
 
     // 3. Filtrar as leads locais do CRM para conectar ao Funil
     let filteredCrmLeads = localLeads;
