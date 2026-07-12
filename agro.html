@@ -1016,17 +1016,52 @@
         return { total, convertidos, qualificados, receita, ticket, taxaConv, taxaQual };
       }, [filtered]);
 
-      // Funil
+      // Funil completo
       const funnel = useMemo(() => {
-        const total = filtered.length;
-        const qualOrMore = filtered.filter(l => l.status === 'lead qualificado' || l.status === 'convertido').length;
-        const conv = filtered.filter(l => l.status === 'convertido').length;
+        let metaClicks = 0;
+        let isMetaLinked = !!mappedMetaAccountId || isDemoMode;
+        if (isMetaLinked && metaData && metaData.campaigns) {
+          metaData.campaigns.forEach(c => {
+            metaClicks += parseInt(c.conversas || 0);
+          });
+        }
+
+        const totalContatos = filtered.length;
+        const totalLeads = filtered.filter(l => l.status !== 'sem interesse').length;
+        const totalQualificados = filtered.filter(l => l.status === 'lead qualificado' || l.status === 'convertido').length;
+        const totalConvertidos = filtered.filter(l => l.status === 'convertido').length;
+
+        // Base de cálculo das porcentagens (100%): se temos cliques Meta, eles são 100%. Caso contrário, contatos na planilha são 100%.
+        const base = (isMetaLinked && metaClicks > 0) ? metaClicks : (totalContatos > 0 ? totalContatos : 1);
+
         return [
-          { stage: 'Leads recebidos', value: total, pct: 100 },
-          { stage: 'Qualificados', value: qualOrMore, pct: total ? (qualOrMore / total) * 100 : 0 },
-          { stage: 'Convertidos', value: conv, pct: total ? (conv / total) * 100 : 0 },
+          { 
+            stage: 'Cliques no WhatsApp (Meta)', 
+            value: isMetaLinked ? metaClicks : null, 
+            pct: isMetaLinked && metaClicks > 0 ? (metaClicks / base) * 100 : 0 
+          },
+          { 
+            stage: 'Contatos na Planilha (Conversas)', 
+            value: totalContatos, 
+            pct: (totalContatos / base) * 100 
+          },
+          { 
+            stage: 'Leads Reais', 
+            value: totalLeads, 
+            pct: (totalLeads / base) * 100 
+          },
+          { 
+            stage: 'Leads Qualificados', 
+            value: totalQualificados, 
+            pct: (totalQualificados / base) * 100 
+          },
+          { 
+            stage: 'Conversões (Vendas)', 
+            value: totalConvertidos, 
+            pct: (totalConvertidos / base) * 100 
+          },
         ];
-      }, [filtered]);
+      }, [filtered, metaData, mappedMetaAccountId, isDemoMode]);
 
       // Tendência por mês
       const trend = useMemo(() => {
@@ -1481,10 +1516,22 @@
                 <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
                     <span style={{ color: COLORS.textSoft }}>{f.stage}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>{fmtNum(f.value)} · {fmtPct(f.pct)}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>
+                      {f.value !== null ? (
+                        `${fmtNum(f.value)} · ${fmtPct(f.pct)}`
+                      ) : (
+                        <span style={{ color: COLORS.textFaint, fontStyle: 'italic', fontSize: 11.5 }}>Meta desvinculado</span>
+                      )}
+                    </span>
                   </div>
                   <div style={{ height: 10, background: COLORS.surfaceHi, borderRadius: 6, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${f.pct}%`, background: i === 2 ? COLORS.gold : i === 1 ? COLORS.teal : COLORS.slate, borderRadius: 6, transition: 'width .3s' }} />
+                    <div style={{ 
+                      height: '100%', 
+                      width: `${Math.min(f.pct, 100)}%`, 
+                      background: ['#3b82f6', COLORS.slate, '#4F8F73', '#a855f7', COLORS.gold][i] || COLORS.slate, 
+                      borderRadius: 6, 
+                      transition: 'width .3s' 
+                    }} />
                   </div>
                 </div>
               ))}
