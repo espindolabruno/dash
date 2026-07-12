@@ -59,6 +59,169 @@
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(243, 241, 231, 0.3);
     }
+
+    /* Estilos do Date Picker e Navegação de Data */
+    .date-navigation-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 100;
+    }
+    .date-nav-btn {
+      background: #1B2B22;
+      border: 1px solid rgba(243, 241, 231, 0.10);
+      color: #AFBBAA;
+      border-radius: 10px;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .date-nav-btn:hover:not(:disabled) {
+      background: #24382C;
+      color: #F3F1E7;
+      border-color: #D8A73D;
+      box-shadow: 0 0 10px rgba(218, 167, 97, 0.15);
+    }
+    .date-nav-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      border-color: rgba(243, 241, 231, 0.04);
+    }
+    .date-picker-trigger {
+      background: #1B2B22;
+      border: 1px solid rgba(243, 241, 231, 0.10);
+      border-radius: 10px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #F3F1E7;
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 240px;
+      justify-content: space-between;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .date-picker-trigger:hover {
+      background: #24382C;
+      border-color: #D8A73D;
+      box-shadow: 0 0 10px rgba(218, 167, 97, 0.15);
+    }
+    .date-picker-trigger .calendar-icon {
+      color: #D8A73D;
+    }
+    .date-picker-trigger .trigger-arrow {
+      color: #AFBBAA;
+      font-size: 0.8rem;
+      transition: all 0.15s;
+    }
+    .date-picker-trigger:hover .trigger-arrow {
+      color: #F3F1E7;
+    }
+    .date-picker-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 1000;
+      background: #1B2B22;
+      border: 1px solid rgba(243, 241, 231, 0.18);
+      border-radius: 12px;
+      width: 280px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .date-picker-options {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .picker-opt-btn {
+      background: transparent;
+      border: none;
+      color: #AFBBAA;
+      padding: 8px 12px;
+      text-align: left;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .picker-opt-btn:hover {
+      background: rgba(243, 241, 231, 0.06);
+      color: #F3F1E7;
+    }
+    .picker-opt-btn.active {
+      background: #D8A73D;
+      color: #12201A;
+      font-weight: 600;
+    }
+    .custom-date-inputs {
+      border-top: 1px solid rgba(243, 241, 231, 0.10);
+      padding-top: 10px;
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .input-group-row {
+      display: flex;
+      gap: 8px;
+    }
+    .date-input-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+    .date-input-field label {
+      font-size: 11px;
+      color: #7C8C7C;
+      font-weight: 600;
+    }
+    .date-input-field input {
+      background: #12201A;
+      border: 1px solid rgba(243, 241, 231, 0.10);
+      border-radius: 6px;
+      color: #F3F1E7;
+      padding: 6px 10px;
+      font-size: 12px;
+      outline: none;
+      transition: all 0.15s;
+      width: 100%;
+    }
+    .date-input-field input:focus {
+      border-color: #D8A73D;
+    }
+    .btn-apply-date {
+      background: #D8A73D;
+      color: #12201A;
+      border: none;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      width: 100%;
+    }
+    .btn-apply-date:hover {
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -293,6 +456,23 @@
       const [months, setMonths] = useState([]);
       const [sortKey, setSortKey] = useState('leads');
 
+      // Estados do controle de período
+      const [startDate, setStartDate] = useState(() => {
+        const start = new Date();
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        return start;
+      });
+      const [endDate, setEndDate] = useState(() => {
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        return end;
+      });
+      const [dateFilter, setDateFilter] = useState('7');
+      const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+      const [customStartDate, setCustomStartDate] = useState('');
+      const [customEndDate, setCustomEndDate] = useState('');
+
       // Estado de conexões e modais (Google e Meta)
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [settingsTab, setSettingsTab] = useState('status'); // 'status' (Google) ou 'meta'
@@ -310,6 +490,183 @@
       const [mappedMetaAccountId, setMappedMetaAccountId] = useState(null);
       const [mappedMetaAccountName, setMappedMetaAccountName] = useState(null);
       const [mappedInstagramUsername, setMappedInstagramUsername] = useState(null);
+
+      // Funções auxiliares para formatação de data
+      const formatDateShort = (date) => {
+        if (!date) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        return `${day}/${month}`;
+      };
+
+      const formatDateFull = (date) => {
+        if (!date) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      // Atualiza o range de data com base no filtro selecionado
+      const updateDateRange = (type, customStart = null, customEnd = null) => {
+        const startOfDay = (d) => {
+          const nd = new Date(d);
+          nd.setHours(0, 0, 0, 0);
+          return nd;
+        };
+        const endOfDay = (d) => {
+          const nd = new Date(d);
+          nd.setHours(23, 59, 59, 999);
+          return nd;
+        };
+
+        setDateFilter(type);
+        const now = new Date();
+
+        if (type === 'today') {
+          setStartDate(startOfDay(now));
+          setEndDate(endOfDay(now));
+        } else if (type === 'yesterday') {
+          const yesterday = new Date();
+          yesterday.setDate(now.getDate() - 1);
+          setStartDate(startOfDay(yesterday));
+          setEndDate(endOfDay(yesterday));
+        } else if (type === 'hoje_ontem') {
+          const yesterday = new Date();
+          yesterday.setDate(now.getDate() - 1);
+          setStartDate(startOfDay(yesterday));
+          setEndDate(endOfDay(now));
+        } else if (type === '3') {
+          const start = new Date();
+          start.setDate(now.getDate() - 2);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === '7') {
+          const start = new Date();
+          start.setDate(now.getDate() - 6);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === '15') {
+          const start = new Date();
+          start.setDate(now.getDate() - 14);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === 'ultimo_mes') {
+          const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const end = new Date(now.getFullYear(), now.getMonth(), 0);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(end));
+        } else if (type === 'mes_atual') {
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === 'custom') {
+          if (customStart && customEnd) {
+            setStartDate(startOfDay(new Date(customStart + 'T00:00:00')));
+            setEndDate(endOfDay(new Date(customEnd + 'T23:59:59')));
+          }
+        }
+      };
+
+      // Desloca o range de data atual para frente ou para trás
+      const shiftDateRange = (direction) => {
+        if (!startDate || !endDate) return;
+
+        const sY = startDate.getFullYear();
+        const sM = startDate.getMonth();
+        const sD = startDate.getDate();
+        const eY = endDate.getFullYear();
+        const eM = endDate.getMonth();
+        const eD = endDate.getDate();
+        const sDateOnly = new Date(sY, sM, sD);
+        const eDateOnly = new Date(eY, eM, eD);
+        
+        const diffDays = Math.round((eDateOnly - sDateOnly) / (1000 * 60 * 60 * 24)) + 1;
+        
+        let newStart = new Date(startDate);
+        let newEnd = new Date(endDate);
+
+        const isCalendarMonth = sD === 1 && eD === new Date(eY, eM + 1, 0).getDate();
+
+        if (isCalendarMonth) {
+          if (direction === 'prev') {
+            newStart = new Date(sY, sM - 1, 1);
+            newEnd = new Date(sY, sM, 0);
+          } else {
+            newStart = new Date(sY, sM + 1, 1);
+            newEnd = new Date(sY, sM + 2, 0);
+          }
+        } else {
+          if (direction === 'prev') {
+            newStart.setDate(newStart.getDate() - diffDays);
+            newEnd.setDate(newEnd.getDate() - diffDays);
+          } else {
+            newStart.setDate(newStart.getDate() + diffDays);
+            newEnd.setDate(newEnd.getDate() + diffDays);
+          }
+        }
+
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (newEnd > today) {
+          return;
+        }
+
+        setStartDate(newStart);
+        setEndDate(newEnd);
+        setDateFilter('custom');
+      };
+
+      // Retorna a label textual para exibição no botão de trigger
+      const getDateDisplayLabel = () => {
+        if (!startDate || !endDate) return 'Todo Período';
+        
+        if (dateFilter === 'today') {
+          return `Hoje (${formatDateFull(startDate)})`;
+        }
+        if (dateFilter === 'yesterday') {
+          return `Ontem (${formatDateFull(startDate)})`;
+        }
+        if (dateFilter === 'hoje_ontem') {
+          return `Hoje e Ontem (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '3') {
+          return `Últimos 3 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '7') {
+          return `Últimos 7 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '15') {
+          return `Últimos 15 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === 'ultimo_mes') {
+          return `Último mês (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === 'mes_atual') {
+          return `Mês atual (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        
+        return `${formatDateFull(startDate)} - ${formatDateFull(endDate)}`;
+      };
+
+      // Sincroniza inputs do form personalizado
+      useEffect(() => {
+        if (startDate) setCustomStartDate(startDate.toISOString().substring(0, 10));
+        if (endDate) setCustomEndDate(endDate.toISOString().substring(0, 10));
+      }, [startDate, endDate]);
+
+      // Fecha dropdown de datas ao clicar fora
+      useEffect(() => {
+        const handleOutsideClick = (event) => {
+          const trigger = document.getElementById('date-picker-trigger');
+          const dropdown = document.getElementById('date-picker-dropdown');
+          if (trigger && dropdown && !trigger.contains(event.target) && !dropdown.contains(event.target)) {
+            setIsDatePickerOpen(false);
+          }
+        };
+        document.addEventListener('click', handleOutsideClick);
+        return () => document.removeEventListener('click', handleOutsideClick);
+      }, []);
 
       // Verifica status de conexão do Google Drive
       const checkGoogleStatus = async () => {
@@ -485,16 +842,16 @@
         fetchClients();
       }, []);
 
-      // Carrega os leads e dados do Meta Ads do cliente selecionado
+      // 1. Carrega os leads (planilha) do cliente selecionado
       useEffect(() => {
         if (!selectedClient) return;
 
-        async function fetchClientData() {
+        async function fetchClientLeads() {
           try {
             setLoading(true);
             setError(null);
             
-            // 1. Carregar leads da planilha do Google Drive
+            // Carregar leads da planilha do Google Drive
             const leadsUrl = `/api/leads?clientId=${selectedClientId}&clientName=${encodeURIComponent(selectedClient)}&demo=${isDemoMode}`;
             const leadsRes = await fetch(leadsUrl);
             if (!leadsRes.ok) throw new Error('Falha ao carregar leads do cliente.');
@@ -506,7 +863,7 @@
             setMappedMetaAccountName(leadsData.meta_ad_account_name);
             setMappedInstagramUsername(leadsData.instagram_username);
             
-            // Normalizar os leads retornados para o formato esperado pelo dashboard de example.txt
+            // Normalizar os leads retornados para o formato esperado pelo dashboard
             const normalizedLeads = (leadsData.leads || []).map((l, index) => {
               // Mapeamento inteligente de status
               let statusMapped = 'lead';
@@ -530,9 +887,18 @@
               const isIos = dev.includes('ios') || dev.includes('iphone') || dev.includes('apple');
               const deviceMapped = isIos ? 'ios' : 'android';
 
+              // Função interna segura de parsing
+              const parseDateSafe = (dateStr) => {
+                if (!dateStr) return null;
+                const parts = dateStr.split(' ')[0].split('-');
+                if (parts.length < 3) return null;
+                return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+              };
+
               return {
                 id: index + 1,
                 data_dt: l.date || '',
+                _parsedDate: parseDateSafe(l.date),
                 mes: l.date ? l.date.substring(0, 7) : '',
                 semana: getISOWeek(l.date),
                 dia_semana: getDiaSemana(l.date),
@@ -555,21 +921,6 @@
             setStatuses([]);
             setMonths([]);
 
-            // 2. Carregar dados de campanhas do Meta Ads se houver conta vinculada
-            const metaAccountId = leadsData.meta_ad_account_id;
-            if (metaAccountId) {
-              const metaUrl = `/api/meta-insights?accountId=${metaAccountId}&demo=${isDemoMode}&clientName=${encodeURIComponent(selectedClient)}&days=90`;
-              const metaRes = await fetch(metaUrl);
-              if (metaRes.ok) {
-                const metaDataRes = await metaRes.json();
-                setMetaData(metaDataRes);
-              } else {
-                setMetaData(null);
-              }
-            } else {
-              setMetaData(null);
-            }
-
             setLoading(false);
           } catch (err) {
             setError(err.message);
@@ -577,8 +928,49 @@
           }
         }
 
-        fetchClientData();
+        fetchClientLeads();
       }, [selectedClient, selectedClientId, isDemoMode, refreshTrigger]);
+
+      // 2. Carrega os dados de campanhas do Meta Ads de forma dinâmica conforme o período selecionado
+      useEffect(() => {
+        if (!selectedClient) return;
+
+        async function fetchMetaInsights() {
+          const accountId = mappedMetaAccountId || (isDemoMode ? 'act_77728399102' : null);
+          if (!accountId) {
+            setMetaData(null);
+            return;
+          }
+
+          try {
+            let metaUrl = `/api/meta-insights?accountId=${accountId}&demo=${isDemoMode}&clientName=${encodeURIComponent(selectedClient)}`;
+            if (startDate && endDate) {
+              const formatDateStr = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+              };
+              metaUrl += `&startDate=${formatDateStr(startDate)}&endDate=${formatDateStr(endDate)}`;
+            } else {
+              metaUrl += `&days=90`;
+            }
+
+            const metaRes = await fetch(metaUrl);
+            if (metaRes.ok) {
+              const metaDataRes = await metaRes.json();
+              setMetaData(metaDataRes);
+            } else {
+              setMetaData(null);
+            }
+          } catch (e) {
+            console.error("Erro ao buscar campanhas Meta Ads:", e);
+            setMetaData(null);
+          }
+        }
+
+        fetchMetaInsights();
+      }, [selectedClient, mappedMetaAccountId, startDate, endDate, isDemoMode, refreshTrigger]);
 
       // Mês selectors baseados no leads carregado
       const allMonths = useMemo(() => [...new Set(leads.map(l => l.mes))].filter(Boolean).sort(), [leads]);
@@ -588,12 +980,20 @@
       }
 
       // Filtro dos dados de leads em memória
-      const filtered = useMemo(() => leads.filter(l =>
-        (platforms.length === 0 || platforms.includes(l.plataforma)) &&
-        (devices.length === 0 || devices.includes(l.dispositivo)) &&
-        (statuses.length === 0 || statuses.includes(l.status)) &&
-        (months.length === 0 || months.includes(l.mes))
-      ), [leads, platforms, devices, statuses, months]);
+      const filtered = useMemo(() => leads.filter(l => {
+        // Filtro de período por data
+        if (startDate && endDate) {
+          if (!l._parsedDate || l._parsedDate < startDate || l._parsedDate > endDate) {
+            return false;
+          }
+        }
+        return (
+          (platforms.length === 0 || platforms.includes(l.plataforma)) &&
+          (devices.length === 0 || devices.includes(l.dispositivo)) &&
+          (statuses.length === 0 || statuses.includes(l.status)) &&
+          (months.length === 0 || months.includes(l.mes))
+        );
+      }), [leads, platforms, devices, statuses, months, startDate, endDate]);
 
       const resetFilters = () => { 
         setPlatforms([]); 
@@ -728,7 +1128,7 @@
         }
         if (trend.length >= 2) {
           const best = [...trend].sort((a, b) => b.convertidos - a.convertidos)[0];
-          if (best && best.convertidos > 0) out.push(`${best.mes} foi o melhor mês in conversões, com ${fmtNum(best.convertidos)} vendas fechadas.`);
+          if (best && best.convertidos > 0) out.push(`${best.mes} foi o melhor mês em conversões, com ${fmtNum(best.convertidos)} vendas fechadas.`);
         }
         let bestCell = null;
         Object.entries(heatmap.grid).forEach(([day, row]) => {
@@ -815,6 +1215,103 @@
                 >
                   {clients.map(c => <option key={c.id} value={c.name} style={{ background: COLORS.surface }}>{c.name}</option>)}
                 </select>
+              </div>
+
+              {/* Novo Seletor de Período com Setas e Dropdown */}
+              <div className="date-navigation-wrapper">
+                <button 
+                  disabled={!startDate || !endDate} 
+                  onClick={() => shiftDateRange('prev')} 
+                  className="date-nav-btn" 
+                  title="Período Anterior"
+                >
+                  <i className="fa-solid fa-chevron-left"></i>
+                </button>
+                
+                <div style={{ position: 'relative' }}>
+                  <div 
+                    onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} 
+                    className="date-picker-trigger" 
+                    id="date-picker-trigger"
+                  >
+                    <i className="fa-solid fa-calendar-days calendar-icon"></i>
+                    <span>{getDateDisplayLabel()}</span>
+                    <i className="fa-solid fa-chevron-down trigger-arrow"></i>
+                  </div>
+                  
+                  {isDatePickerOpen && (
+                    <div className="date-picker-dropdown" id="date-picker-dropdown">
+                      <div className="date-picker-options">
+                        <button className={`picker-opt-btn ${dateFilter === 'today' ? 'active' : ''}`} onClick={() => { updateDateRange('today'); setIsDatePickerOpen(false); }}>Hoje</button>
+                        <button className={`picker-opt-btn ${dateFilter === 'yesterday' ? 'active' : ''}`} onClick={() => { updateDateRange('yesterday'); setIsDatePickerOpen(false); }}>Ontem</button>
+                        <button className={`picker-opt-btn ${dateFilter === 'hoje_ontem' ? 'active' : ''}`} onClick={() => { updateDateRange('hoje_ontem'); setIsDatePickerOpen(false); }}>Hoje e Ontem</button>
+                        <button className={`picker-opt-btn ${dateFilter === '3' ? 'active' : ''}`} onClick={() => { updateDateRange('3'); setIsDatePickerOpen(false); }}>Últimos 3 dias</button>
+                        <button className={`picker-opt-btn ${dateFilter === '7' ? 'active' : ''}`} onClick={() => { updateDateRange('7'); setIsDatePickerOpen(false); }}>Últimos 7 dias</button>
+                        <button className={`picker-opt-btn ${dateFilter === '15' ? 'active' : ''}`} onClick={() => { updateDateRange('15'); setIsDatePickerOpen(false); }}>Últimos 15 dias</button>
+                        <button className={`picker-opt-btn ${dateFilter === 'ultimo_mes' ? 'active' : ''}`} onClick={() => { updateDateRange('ultimo_mes'); setIsDatePickerOpen(false); }}>Último mês</button>
+                        <button className={`picker-opt-btn ${dateFilter === 'mes_atual' ? 'active' : ''}`} onClick={() => { updateDateRange('mes_atual'); setIsDatePickerOpen(false); }}>Mês atual</button>
+                        <button className={`picker-opt-btn ${dateFilter === 'custom' ? 'active' : ''}`} onClick={() => setDateFilter('custom')}>Personalizado</button>
+                      </div>
+                      
+                      {dateFilter === 'custom' && (
+                        <div className="custom-date-inputs" id="custom-date-inputs-container">
+                          <div className="input-group-row">
+                            <div className="date-input-field">
+                              <label>Início</label>
+                              <input 
+                                type="date" 
+                                value={customStartDate} 
+                                onChange={(e) => setCustomStartDate(e.target.value)} 
+                              />
+                            </div>
+                            <div className="date-input-field">
+                              <label>Fim</label>
+                              <input 
+                                type="date" 
+                                value={customEndDate} 
+                                onChange={(e) => setCustomEndDate(e.target.value)} 
+                              />
+                            </div>
+                          </div>
+                          <button 
+                            className="btn-apply-date" 
+                            onClick={() => {
+                              if (customStartDate && customEndDate) {
+                                const startD = new Date(customStartDate + 'T00:00:00');
+                                const endD = new Date(customEndDate + 'T23:59:59');
+                                if (startD > endD) {
+                                  alert('A data de início não pode ser maior que a data de fim.');
+                                  return;
+                                }
+                                const todayEnd = new Date();
+                                todayEnd.setHours(23, 59, 59, 999);
+                                if (endD > todayEnd) {
+                                  alert('A data final não pode ser posterior a hoje.');
+                                  return;
+                                }
+                                updateDateRange('custom', customStartDate, customEndDate);
+                                setIsDatePickerOpen(false);
+                              } else {
+                                alert('Por favor, selecione ambas as datas.');
+                              }
+                            }}
+                          >
+                            Aplicar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                <button 
+                  disabled={!startDate || !endDate} 
+                  onClick={() => shiftDateRange('next')} 
+                  className="date-nav-btn" 
+                  title="Próximo Período"
+                >
+                  <i className="fa-solid fa-chevron-right"></i>
+                </button>
               </div>
 
               {/* Botão para Versão Antiga */}
@@ -1286,21 +1783,21 @@
                           <button
                             onClick={async () => {
                               if (googleConnected) {
-                                  if (confirm('Deseja realmente desconectar a sua conta do Google Drive da VPS?')) {
-                                    try {
-                                      const res = await fetch('/api/google/disconnect', { method: 'POST' });
-                                      if (res.ok) {
-                                        alert('Google Drive desconectado com sucesso.');
-                                        checkGoogleStatus();
-                                      }
-                                    } catch (e) {
-                                      alert('Erro ao desconectar Google Drive.');
+                                if (confirm('Deseja realmente desconectar a sua conta do Google Drive da VPS?')) {
+                                  try {
+                                    const res = await fetch('/api/google/disconnect', { method: 'POST' });
+                                    if (res.ok) {
+                                      alert('Google Drive desconectado com sucesso.');
+                                      checkGoogleStatus();
                                     }
+                                  } catch (e) {
+                                    alert('Erro ao desconectar Google Drive.');
                                   }
-                                } else {
-                                  window.location.href = '/api/google/auth';
                                 }
-                              }}
+                              } else {
+                                window.location.href = '/api/google/auth';
+                              }
+                            }}
                             style={{ 
                               background: googleConnected ? 'rgba(239, 68, 68, 0.1)' : COLORS.gold,
                               border: googleConnected ? '1px solid rgba(239, 68, 68, 0.2)' : 'none',
