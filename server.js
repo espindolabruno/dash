@@ -157,7 +157,10 @@ const COLUMN_MAPPINGS = {
   adset: ['conjunto', 'conjunto de anúncios', 'adset', 'ad set', 'utm_medium', 'grupo de anúncios'],
   creative: ['anuncio', 'criativo', 'creative', 'utm_content', 'anúncio', 'ad'],
   copy: ['criativo_copy', 'copy', 'texto', 'utm_term', 'redação', 'copywriting'],
-  anuncio_preview: ['anuncio_preview', 'preview', 'link_preview', 'preview_anuncio', 'link do anuncio', 'preview do anúncio']
+  anuncio_preview: ['anuncio_preview', 'preview', 'link_preview', 'preview_anuncio', 'link do anuncio', 'preview do anúncio'],
+  phase: ['fase', 'status'],
+  estimated_value: ['valor estimado', 'valor'],
+  observations: ['observações', 'observacoes', 'observação', 'observacao', 'obs']
 };
 
 // ==========================================================================
@@ -274,17 +277,12 @@ app.get('/api/leads', async (req, res) => {
     });
     const sheetTitles = spreadsheetMeta.data.sheets.map(s => s.properties.title);
 
-    // Identificar abas corretas para Leads e Resumo (busca resiliente)
+    // Identificar aba de Leads (busca resiliente)
     const leadsSheetName = sheetTitles.find(t => 
       t.toLowerCase().includes('leads_campanha_whatsapp') || 
       t.toLowerCase().includes('leads_campanha') || 
       t.toLowerCase().includes('leads')
     ) || sheetTitles[0];
-
-    const resumoSheetName = sheetTitles.find(t => 
-      t.toLowerCase() === 'resumo' || 
-      t.toLowerCase().includes('resumo')
-    );
 
     // D. Ler dados da aba de Leads
     let leadsRows = [];
@@ -300,44 +298,6 @@ app.get('/api/leads', async (req, res) => {
 
     if (!leadsRows || leadsRows.length < 2) {
       return res.json({ leads: [], mapped: !!mapping, meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null });
-    }
-
-    // E. Carregar aba RESUMO e criar dicionário para cruzamento inteligente
-    const resumoMap = new Map();
-    if (resumoSheetName) {
-      try {
-        const resResumo = await sheets.spreadsheets.values.get({
-          spreadsheetId: sheetFile.id,
-          range: `'${resumoSheetName}'!A1:Z5000`
-        });
-        const resumoRows = resResumo.data.values;
-        if (resumoRows && resumoRows.length >= 2) {
-          const resumoHeaders = resumoRows[0].map(h => h.toString().toLowerCase().trim());
-          const phoneIdx = resumoHeaders.findIndex(h => h === 'telefone' || h.includes('telefone') || h === 'phone');
-          const faseIdx = resumoHeaders.findIndex(h => h === 'fase' || h.includes('fase') || h === 'status');
-          const valorIdx = resumoHeaders.findIndex(h => h.includes('valor') || h.includes('estimado'));
-          const obsIdx = resumoHeaders.findIndex(h => h.includes('observ') || h.includes('obs'));
-
-          if (phoneIdx !== -1) {
-            for (let i = 1; i < resumoRows.length; i++) {
-              const row = resumoRows[i];
-              const rawPhone = row[phoneIdx];
-              if (rawPhone) {
-                const cleanPh = rawPhone.toString().replace(/\D/g, '');
-                if (cleanPh) {
-                  resumoMap.set(cleanPh, {
-                    fase: faseIdx !== -1 && row[faseIdx] ? row[faseIdx].toString().trim() : '',
-                    valor: valorIdx !== -1 && row[valorIdx] ? row[valorIdx].toString().trim() : '',
-                    obs: obsIdx !== -1 && row[obsIdx] ? row[obsIdx].toString().trim() : ''
-                  });
-                }
-              }
-            }
-          }
-        }
-      } catch (errResumo) {
-        console.error(`Erro ao carregar aba de resumo [${resumoSheetName}]:`, errResumo);
-      }
     }
 
     // F. Normalização de colunas com prioridade para busca exata
@@ -372,38 +332,9 @@ app.get('/api/leads', async (req, res) => {
       if (!lead.platform) lead.platform = 'Direto / Desconhecido';
       if (!lead.device) lead.device = 'Não Especificado';
 
-      // Cruzamento inteligente com a aba RESUMO (cruzamento por telefone)
-      let leadPhase = '';
-      let leadValue = '';
-      let leadObs = '';
-
-      if (lead.phone) {
-        const cleanLeadPhone = lead.phone.replace(/\D/g, '');
-        if (cleanLeadPhone) {
-          if (resumoMap.has(cleanLeadPhone)) {
-            const dataResumo = resumoMap.get(cleanLeadPhone);
-            leadPhase = dataResumo.fase;
-            leadValue = dataResumo.valor;
-            leadObs = dataResumo.obs;
-          } else {
-            // Busca aproximada baseada nos últimos 8+ dígitos
-            for (const [resumoPhone, dataResumo] of resumoMap.entries()) {
-              if (cleanLeadPhone.length >= 8 && resumoPhone.length >= 8) {
-                if (cleanLeadPhone.endsWith(resumoPhone) || resumoPhone.endsWith(cleanLeadPhone)) {
-                  leadPhase = dataResumo.fase;
-                  leadValue = dataResumo.valor;
-                  leadObs = dataResumo.obs;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      lead.phase = leadPhase || 'Lead';
-      lead.estimated_value = leadValue;
-      lead.observations = leadObs;
+      if (!lead.phase) lead.phase = 'Lead';
+      if (!lead.estimated_value) lead.estimated_value = '';
+      if (!lead.observations) lead.observations = '';
 
       return lead;
     }).filter(lead => lead.name || lead.phone);
