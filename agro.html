@@ -224,56 +224,6 @@
       );
     }
 
-    function Card({ children, style }) {
-      return (
-        <div style={{
-          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14,
-          padding: 18, ...style
-        }}>{children}</div>
-      );
-    }
-
-    // Adaptador de ícone para KPI de example.txt
-    function KPI({ icon: IconComponent, label, value, sub, accent }) {
-      return (
-        <Card style={{ position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: accent, opacity: 0.08 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <IconComponent size={15} color={accent} />
-            </div>
-            <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>{label}</span>
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{value}</div>
-          {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{sub}</div>}
-        </Card>
-      );
-    }
-
-    function SectionTitle({ eyebrow, title, sub }) {
-      return (
-        <div style={{ marginBottom: 14 }}>
-          {eyebrow && <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{eyebrow}</div>}
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>{title}</div>
-          {sub && <div style={{ fontSize: 12.5, color: COLORS.textFaint, marginTop: 2 }}>{sub}</div>}
-        </div>
-      );
-    }
-
-    function CustomTooltip({ active, payload, label }) {
-      if (!active || !payload || !payload.length) return null;
-      return (
-        <div style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.borderStrong}`, borderRadius: 10, padding: '8px 12px', fontSize: 12.5 }}>
-          <div style={{ color: COLORS.textSoft, marginBottom: 4, fontFamily: 'var(--font-body)' }}>{label}</div>
-          {payload.map((p, i) => (
-            <div key={i} style={{ color: p.color || COLORS.text, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-              {p.name}: {typeof p.value === 'number' ? (p.name.includes('Receita') || p.name.includes('Investimento') ? fmtBRL(p.value) : fmtNum(p.value)) : p.value}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
     // Componente Principal
     function Dashboard() {
       // Estado de autenticação e carregamento
@@ -520,7 +470,7 @@
       const campaigns = useMemo(() => {
         const map = {};
         filtered.forEach(l => {
-          const k = l.campanha_curta || 'Não Identificada';
+          const k = l.criativo || 'Não Identificada';
           if (!map[k]) map[k] = { name: k, leads: 0, convertidos: 0, receita: 0 };
           map[k].leads++;
           if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
@@ -546,12 +496,15 @@
       const metaMetrics = useMemo(() => {
         if (!metaData || !metaData.campaigns) return null;
         let spend = 0;
+        let conversasMeta = 0;
         metaData.campaigns.forEach(c => {
           spend += parseFloat(c.spend || 0);
+          conversasMeta += parseInt(c.conversas || 0);
         });
         const cpl = kpis.total > 0 ? spend / kpis.total : 0;
         const roas = spend > 0 ? kpis.receita / spend : 0;
-        return { spend, cpl, roas };
+        const cpc = conversasMeta > 0 ? spend / conversasMeta : 0;
+        return { spend, cpl, roas, conversasMeta, cpc };
       }, [metaData, kpis]);
 
       // Insights automáticos de example.txt
@@ -698,33 +651,97 @@
 
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 22 }}>
-            <KPI icon={Users} label="Total de leads" value={fmtNum(kpis.total)} accent={COLORS.slate} />
-            <KPI icon={Target} label="Taxa de conversão" value={fmtPct(kpis.taxaConv)} sub={`${fmtNum(kpis.convertidos)} convertidos`} accent={COLORS.gold} />
-            <KPI icon={TrendingUp} label="Taxa de qualificação" value={fmtPct(kpis.taxaQual)} sub="qualificado + convertido" accent={COLORS.teal} />
-            <KPI icon={DollarSign} label="Receita gerada" value={fmtBRL(kpis.receita)} accent={COLORS.gold} />
-            <KPI icon={DollarSign} label="Ticket médio" value={fmtBRL(kpis.ticket)} sub="por venda fechada" accent={COLORS.rust} />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.slate, opacity: 0.08 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.slate + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={15} color={COLORS.slate} />
+                </div>
+                <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Total de conversas</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtNum(kpis.total)}</div>
+              <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{metaMetrics ? `${fmtNum(metaMetrics.conversasMeta)} cliques WhatsApp` : 'Sem dados Meta'}</div>
+            </div>
+
+            {metaMetrics && (
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.rust, opacity: 0.08 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.rust + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarSign size={15} color={COLORS.rust} />
+                  </div>
+                  <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Custo por lead</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtBRL(metaMetrics.cpl)}</div>
+                <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{`vs ${fmtBRL(metaMetrics.cpc)} custo clique`}</div>
+              </div>
+            )}
+
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.teal, opacity: 0.08 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.teal + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={15} color={COLORS.teal} />
+                </div>
+                <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Taxa de qualificação</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtPct(kpis.taxaQual)}</div>
+              <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>qualificado + convertido</div>
+            </div>
+
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.gold, opacity: 0.08 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Target size={15} color={COLORS.gold} />
+                </div>
+                <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Taxa de conversão</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtPct(kpis.taxaConv)}</div>
+              <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{`${fmtNum(kpis.convertidos)} convertidos`}</div>
+            </div>
+
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.gold, opacity: 0.08 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DollarSign size={15} color={COLORS.gold} />
+                </div>
+                <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Receita gerada</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtBRL(kpis.receita)}</div>
+            </div>
+
             {metaMetrics ? (
-              <KPI 
-                icon={Smartphone} 
-                label="Investimento Meta" 
-                value={fmtBRL(metaMetrics.spend)} 
-                sub={metaMetrics.spend > 0 ? `ROAS: ${metaMetrics.roas.toFixed(2)}x | CPL: ${fmtBRL(metaMetrics.cpl)}` : 'Sem investimento'} 
-                accent={COLORS.gold} 
-              />
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.gold, opacity: 0.08 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.gold + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Smartphone size={15} color={COLORS.gold} />
+                  </div>
+                  <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Total investido</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{fmtBRL(metaMetrics.spend)}</div>
+                <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>No período selecionado</div>
+              </div>
             ) : (
-              <KPI 
-                icon={Smartphone} 
-                label="Status Meta" 
-                value="Sem Vínculo" 
-                sub="Não há conta Meta Ads vinculada" 
-                accent={COLORS.rust} 
-              />
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: COLORS.rust, opacity: 0.08 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: COLORS.rust + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Smartphone size={15} color={COLORS.rust} />
+                  </div>
+                  <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>Total investido</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>Sem Vínculo</div>
+                <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>Não há conta Meta Ads vinculada</div>
+              </div>
             )}
           </div>
 
           {/* Insights automáticos */}
           {insights.length > 0 && (
-            <Card style={{ marginBottom: 22, background: COLORS.surfaceHi }}>
+            <div style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <Sparkles size={15} color={COLORS.gold} />
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>Padrões encontrados nos dados filtrados</span>
@@ -737,13 +754,17 @@
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           )}
 
           {/* Funil + Trend */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
-            <Card>
-              <SectionTitle eyebrow="Funil" title="Do lead à venda" sub="Leads sem interesse saem do funil" />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Funil</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Do lead à venda</div>
+                <div style={{ fontSize: 12.5, color: COLORS.textFaint, marginTop: 2 }}>Leads sem interesse saem do funil</div>
+              </div>
               {funnel.map((f, i) => (
                 <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
@@ -755,10 +776,13 @@
                   </div>
                 </div>
               ))}
-            </Card>
+            </div>
             
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Tendência" title="Leads e conversões por mês" />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, minHeight: 250 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Tendência</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Leads e conversões por mês</div>
+              </div>
               <div style={{ width: '100%', height: 190 }}>
                 {trend.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -775,13 +799,16 @@
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
                 )}
               </div>
-            </Card>
+            </div>
           </div>
 
           {/* Canal + Dispositivo + Heatmap */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Canal" title="Instagram vs Facebook" />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, minHeight: 250 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Canal</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Instagram vs Facebook</div>
+              </div>
               <div style={{ width: '100%', height: 180 }}>
                 {byPlatform.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -798,10 +825,13 @@
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
                 )}
               </div>
-            </Card>
+            </div>
 
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Dispositivo" title="Android vs iOS" />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, minHeight: 250 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Dispositivo</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Android vs iOS</div>
+              </div>
               <div style={{ width: '100%', height: 160 }}>
                 {byDevice.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -824,10 +854,13 @@
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
 
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Horário" title="Quando os leads chegam" />
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, minHeight: 250 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Horário</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Quando os leads chegam</div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '54px repeat(4, 1fr)', gap: 4, fontSize: 10.5 }}>
                 <div />
                 {PERIOD_ORDER.map(p => <div key={p} style={{ textAlign: 'center', color: COLORS.textFaint }}>{p}</div>)}
@@ -849,13 +882,17 @@
                   </React.Fragment>
                 ))}
               </div>
-            </Card>
+            </div>
           </div>
 
           {/* Campanhas */}
-          <Card style={{ marginBottom: 16 }}>
+          <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-              <SectionTitle eyebrow="Ranking" title="Performance por campanha" sub="Clique nas colunas para ordenar" />
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Ranking</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Performance por criativo</div>
+                <div style={{ fontSize: 12.5, color: COLORS.textFaint, marginTop: 2 }}>Clique nas colunas para ordenar</div>
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[['leads', 'Leads'], ['taxa', 'Conversão'], ['receita', 'Receita']].map(([k, label]) => (
                   <Chip key={k} active={sortKey === k} onClick={() => setSortKey(k)}>{label}</Chip>
@@ -866,7 +903,7 @@
               <table className="rk" style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
                 <thead>
                   <tr>
-                    <th>Campanha</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th>
+                    <th>Criativo</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -894,17 +931,20 @@
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhuma campanha encontrada</td>
+                      <td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhum criativo encontrado</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </Card>
+          </div>
 
           {/* Criativos */}
-          <Card>
-            <SectionTitle eyebrow="Criativos" title="Melhores anúncios por volume de leads" />
+          <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 18 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Criativos</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>Melhores anúncios por volume de leads</div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
               {creatives.length > 0 ? (
                 creatives.map((c, i) => (
@@ -937,7 +977,7 @@
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhum criativo encontrado com dados de prévia</div>
               )}
             </div>
-          </Card>
+          </div>
         </div>
       );
     }
