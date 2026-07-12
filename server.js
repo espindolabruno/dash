@@ -18,6 +18,9 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Rota principal redireciona para agro.html
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'agro.html')));
+
 // Servir arquivos estáticos da pasta atual (frontend)
 app.use(express.static(__dirname));
 
