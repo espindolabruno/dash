@@ -776,7 +776,7 @@
         setIsDemoMode(isDemo);
 
         if (!sessionToken && !isDemo) {
-          window.location.href = '/';
+          window.location.href = '/index.html';
           return;
         }
 
@@ -1187,7 +1187,7 @@
       // Handler para logout
       const handleLogout = () => {
         sessionStorage.removeItem('session_token');
-        window.location.href = '/';
+        window.location.href = '/index.html';
       };
 
       if (loading && leads.length === 0) {
