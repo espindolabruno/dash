@@ -866,14 +866,21 @@
             // Normalizar os leads retornados para o formato esperado pelo dashboard
             const normalizedLeads = (leadsData.leads || []).map((l, index) => {
               // Mapeamento inteligente de status
-              let statusMapped = 'lead';
+              let statusMapped = 'desconhecido';
               const phase = (l.phase || '').toLowerCase().trim();
               if (phase === 'converteu' || phase === 'convertido' || phase === 'venda') {
                 statusMapped = 'convertido';
-              } else if (phase === 'cliente em potencial' || phase === 'proposta enviada' || phase === 'lead qualificado') {
+              } else if (phase === 'cliente em potencial' || phase === 'proposta enviada' || phase === 'lead qualificado' || phase === 'em negociação' || phase === 'em negociacao') {
                 statusMapped = 'lead qualificado';
+              } else if (phase === 'lead') {
+                statusMapped = 'lead';
               } else if (phase === 'perdido' || phase === 'sem interesse') {
                 statusMapped = 'sem interesse';
+              } else if (!phase) {
+                // Se estiver vazio, vamos manter como desconhecido para não contabilizar no funil de Leads Reais caso não seja.
+                statusMapped = 'desconhecido';
+              } else {
+                statusMapped = 'desconhecido';
               }
 
               // Mapeamento de plataforma
@@ -1027,7 +1034,7 @@
         }
 
         const totalContatos = filtered.length;
-        const totalLeads = filtered.filter(l => l.status !== 'sem interesse').length;
+        const totalLeads = filtered.filter(l => l.status === 'lead' || l.status === 'lead qualificado' || l.status === 'convertido').length;
         const totalQualificados = filtered.filter(l => l.status === 'lead qualificado' || l.status === 'convertido').length;
         const totalConvertidos = filtered.filter(l => l.status === 'convertido').length;
 
