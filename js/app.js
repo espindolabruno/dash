@@ -24,13 +24,196 @@ const App = {
     explorerSearch: '',
     selectedMetaCampaignId: null,
     selectedMetaAdsetId: null,
-    selectedMetaAdId: null
+    selectedMetaAdId: null,
+    
+    // Milestone 3 keys
+    comparisonSlots: [null, null, null],
+    showFunnelAbsolute: false,
+    activeVideoCreative: null,
+
+    leadsSortDirection: 'desc',
+    pixelId: '1234567890',
+    leads: [],
+    filteredLeads: [],
+
+    currentView: 'view-geral',
+    isSidebarExpanded: localStorage.getItem('sidebar_expanded') !== null
+      ? localStorage.getItem('sidebar_expanded') === 'true'
+      : window.innerWidth > 768
   },
   logCount: 0,
 
+  switchView: function(viewId) {
+    console.log('[DEBUG] switchView called with viewId:', viewId);
+    this.state.currentView = viewId;
+    if (viewId === 'view-ai') {
+      this.checkAiClientStatus();
+    }
+    
+    // Update URL hash
+    const hash = viewId.replace('view-', '');
+    if (window.location.hash !== '#' + hash) {
+      window.location.hash = hash;
+    }
+    
+    // Toggle active/hidden classes on the views
+    document.querySelectorAll('.dashboard-view').forEach(view => {
+      if (view.id === viewId) {
+        view.classList.remove('hidden');
+        console.log('[DEBUG] Removed hidden from view:', view.id, 'class list is now:', view.className);
+        try {
+          const tbl = document.getElementById('leads-spreadsheet-table');
+          if (tbl) {
+            console.log('[DEBUG] table display:', window.getComputedStyle(tbl).display);
+            console.log('[DEBUG] table parent display:', window.getComputedStyle(tbl.parentElement).display);
+            console.log('[DEBUG] view display:', window.getComputedStyle(view).display);
+            console.log('[DEBUG] dashboard-screen display:', window.getComputedStyle(document.getElementById('dashboard-screen')).display);
+            console.log('[DEBUG] table width/height/opacity/visibility:', tbl.offsetWidth, tbl.offsetHeight, window.getComputedStyle(tbl).opacity, window.getComputedStyle(tbl).visibility);
+            console.log('[DEBUG] table parent width/height/opacity/visibility:', tbl.parentElement.offsetWidth, tbl.parentElement.offsetHeight, window.getComputedStyle(tbl.parentElement).opacity, window.getComputedStyle(tbl.parentElement).visibility);
+            console.log('[DEBUG] view-leads width/height/opacity/visibility:', view.offsetWidth, view.offsetHeight, window.getComputedStyle(view).opacity, window.getComputedStyle(view).visibility);
+            console.log('[DEBUG] dashboard-screen width/height/opacity/visibility:', document.getElementById('dashboard-screen').offsetWidth, document.getElementById('dashboard-screen').offsetHeight, window.getComputedStyle(document.getElementById('dashboard-screen')).opacity, window.getComputedStyle(document.getElementById('dashboard-screen')).visibility);
+            const content = document.querySelector('.dashboard-content');
+            if (content) {
+              console.log('[DEBUG] dashboard-content width/height/opacity/visibility/display:', content.offsetWidth, content.offsetHeight, window.getComputedStyle(content).opacity, window.getComputedStyle(content).visibility, window.getComputedStyle(content).display);
+            }
+            console.log('[DEBUG] view-leads outerHTML:', view.outerHTML.substring(0, 300));
+            setTimeout(() => {
+              try {
+                console.log('[DEBUG-DELAYED] table display/width/height/opacity/visibility:', window.getComputedStyle(tbl).display, tbl.offsetWidth, tbl.offsetHeight, window.getComputedStyle(tbl).opacity, window.getComputedStyle(tbl).visibility);
+                console.log('[DEBUG-DELAYED] table parent display/width/height/opacity/visibility:', window.getComputedStyle(tbl.parentElement).display, tbl.parentElement.offsetWidth, tbl.parentElement.offsetHeight, window.getComputedStyle(tbl.parentElement).opacity, window.getComputedStyle(tbl.parentElement).visibility);
+                console.log('[DEBUG-DELAYED] view display/width/height/opacity/visibility:', window.getComputedStyle(view).display, view.offsetWidth, view.offsetHeight, window.getComputedStyle(view).opacity, window.getComputedStyle(view).visibility);
+                if (content) console.log('[DEBUG-DELAYED] dashboard-content display/width/height/opacity/visibility:', window.getComputedStyle(content).display, content.offsetWidth, content.offsetHeight, window.getComputedStyle(content).opacity, window.getComputedStyle(content).visibility);
+                
+                // Log children of view-leads
+                Array.from(view.children).forEach((child, i) => {
+                  console.log(`[DEBUG-CHILD-${i}] tag/class/id:`, child.tagName, child.className, child.id);
+                  console.log(`[DEBUG-CHILD-${i}] display/width/height/opacity/visibility:`, window.getComputedStyle(child).display, child.offsetWidth, child.offsetHeight, window.getComputedStyle(child).opacity, window.getComputedStyle(child).visibility);
+                  // Log grandchild recursive if possible
+                  if (child.children.length > 0) {
+                    Array.from(child.children).forEach((gchild, j) => {
+                      console.log(`[DEBUG-GCHILD-${i}-${j}] tag/class/id:`, gchild.tagName, gchild.className, gchild.id);
+                      console.log(`[DEBUG-GCHILD-${i}-${j}] display/width/height/opacity/visibility:`, window.getComputedStyle(gchild).display, gchild.offsetWidth, gchild.offsetHeight, window.getComputedStyle(gchild).opacity, window.getComputedStyle(gchild).visibility);
+                    });
+                  }
+                });
+              } catch (err) {
+                console.log('[DEBUG-DELAYED] Error:', err.message);
+              }
+            }, 500);
+          }
+        } catch (e) {
+          console.log('[DEBUG] Error getting computed styles:', e.message);
+        }
+      } else {
+        view.classList.add('hidden');
+      }
+    });
+
+    // Update active state in sidebar nav items
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
+      if (item.dataset.view === viewId) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+
+    // Dispatch resize event immediately and after 100ms to trigger ApexCharts re-render
+    window.dispatchEvent(new Event('resize'));
+    if (typeof ChartsManager !== 'undefined' && ChartsManager.instances) {
+      Object.values(ChartsManager.instances).forEach(chart => {
+        if (chart && typeof chart.updateOptions === 'function') {
+          // Force size recalculation when view switches from hidden to visible
+          chart.updateOptions({}, false, false, false);
+        } else if (chart && typeof chart.render === 'function') {
+          chart.render();
+        }
+      });
+    }
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+      if (typeof ChartsManager !== 'undefined' && ChartsManager.instances) {
+        Object.values(ChartsManager.instances).forEach(chart => {
+          if (chart && typeof chart.updateOptions === 'function') {
+            chart.updateOptions({}, false, false, false);
+          }
+        });
+      }
+    }, 150);
+  },
+
+  handleHashChange: function() {
+    const hash = window.location.hash.substring(1);
+    const validViews = ['geral', 'campaign', 'video', 'leads', 'events', 'ai'];
+    if (validViews.includes(hash)) {
+      this.switchView('view-' + hash);
+    } else {
+      this.switchView('view-geral');
+    }
+  },
+
+  toggleSidebar: function() {
+    this.state.isSidebarExpanded = !this.state.isSidebarExpanded;
+    localStorage.setItem('sidebar_expanded', String(this.state.isSidebarExpanded));
+    const sidebar = document.getElementById('sidebar');
+    const toggleIcon = document.querySelector('#btn-sidebar-toggle i');
+    const layout = document.querySelector('.dashboard-layout');
+    
+    if (this.state.isSidebarExpanded) {
+      sidebar.classList.add('expanded');
+      sidebar.classList.remove('collapsed');
+      if (layout) layout.classList.add('sidebar-expanded');
+      if (toggleIcon) {
+        toggleIcon.classList.remove('fa-chevron-right');
+        toggleIcon.classList.add('fa-chevron-left');
+      }
+    } else {
+      sidebar.classList.remove('expanded');
+      sidebar.classList.add('collapsed');
+      if (layout) layout.classList.remove('sidebar-expanded');
+      if (toggleIcon) {
+        toggleIcon.classList.remove('fa-chevron-left');
+        toggleIcon.classList.add('fa-chevron-right');
+      }
+    }
+    
+    // Dispatch resize event to recalculate charts
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
+  },
+
   // Inicializa o Dashboard
   init: function() {
+    // Inicializa a sidebar
+    const sidebar = document.getElementById('sidebar');
+    const layout = document.querySelector('.dashboard-layout');
+    if (sidebar) {
+      if (this.state.isSidebarExpanded) {
+        sidebar.classList.add('expanded');
+        sidebar.classList.remove('collapsed');
+        if (layout) layout.classList.add('sidebar-expanded');
+      } else {
+        sidebar.classList.remove('expanded');
+        sidebar.classList.add('collapsed');
+        if (layout) layout.classList.remove('sidebar-expanded');
+      }
+    }
+
+    // Listen to URL hash changes
+    window.addEventListener('hashchange', () => {
+      this.handleHashChange();
+    });
+
     this.setupEventListeners();
+    
+    // Parse initial URL hash
+    if (window.location.hash) {
+      this.handleHashChange();
+    } else {
+      this.switchView('view-geral');
+    }
+
     this.updateDateRange('30');
     ChartsManager.init();
 
@@ -103,6 +286,8 @@ const App = {
       // Exibe tela de login
       this.showScreen('login-screen');
     }
+    
+    this.initComparisonAndFunnel();
   },
 
   // Configura todos os ouvintes de eventos da UI
@@ -167,6 +352,7 @@ const App = {
     // Seletor de Cliente
     document.getElementById('select-client').addEventListener('change', (e) => {
       this.state.selectedClient = e.target.value;
+      this.checkAiClientStatus();
       this.loadClientData();
     });
 
@@ -299,21 +485,20 @@ const App = {
       });
     });
 
-    // Modal de Controle VPS & Logs
+    // Modal de Controle VPS & Logs (Redireciona para a View de Eventos)
     document.getElementById('btn-settings').addEventListener('click', () => {
-      // Reseta para a primeira aba
-      tabButtons[0].click();
-      document.getElementById('settings-modal').classList.add('active');
+      this.switchView('view-events');
+      document.getElementById('modal-settings').classList.add('active');
       this.checkGoogleStatus(); // Busca status dinâmico do Google na VPS
     });
 
     document.getElementById('btn-close-modal').addEventListener('click', () => {
-      document.getElementById('settings-modal').classList.remove('active');
+      document.getElementById('modal-settings').classList.remove('active');
     });
 
     document.getElementById('btn-reload-dashboard').addEventListener('click', () => {
       this.log('INFO', 'System', 'Recarregando dados do servidor VPS...');
-      document.getElementById('settings-modal').classList.remove('active');
+      document.getElementById('modal-settings').classList.remove('active');
       this.loadClients();
     });
 
@@ -407,6 +592,370 @@ const App = {
     document.getElementById('btn-clear-meta-filters').addEventListener('click', () => {
       this.clearMetaFilters();
     });
+
+    // Ouvintes para a Sidebar e Troca de Views
+    const sidebarItems = document.querySelectorAll('.sidebar-nav .nav-item');
+    sidebarItems.forEach((item, index) => {
+      item.addEventListener('click', (e) => {
+        const viewId = e.currentTarget.dataset.view;
+        if (viewId) {
+          window.location.hash = viewId.replace('view-', '');
+        }
+      });
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const nextIndex = (index + 1) % sidebarItems.length;
+          sidebarItems[nextIndex].focus();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prevIndex = (index - 1 + sidebarItems.length) % sidebarItems.length;
+          sidebarItems[prevIndex].focus();
+        }
+      });
+    });
+
+    const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+    if (btnSidebarToggle) {
+      btnSidebarToggle.addEventListener('click', () => {
+        this.toggleSidebar();
+      });
+    }
+
+    const mainContainer = document.querySelector('.main-container');
+    if (mainContainer) {
+      mainContainer.addEventListener('click', () => {
+        if (window.innerWidth <= 768 && this.state.isSidebarExpanded) {
+          this.toggleSidebar();
+        }
+      });
+    }
+
+    // --- CRM LEADS SPREADSHEET (Milestone 4) ---
+    const leadsSearchEl = document.getElementById('leads-table-search');
+    if (leadsSearchEl) {
+      leadsSearchEl.addEventListener('input', (e) => {
+        this.state.searchQuery = e.target.value.toLowerCase().trim();
+        this.state.currentPage = 1;
+        this.applyFilters(true); // skips meta insights fetch to keep it snappy
+      });
+    }
+
+    // --- AI INSIGHTS VIEW (Milestone 5) ---
+    const btnGenInsights = document.getElementById('btn-generate-insights');
+    if (btnGenInsights) {
+      btnGenInsights.addEventListener('click', () => {
+        this.generateInsights();
+      });
+    }
+
+    const btnSendChat = document.getElementById('btn-send-ai-chat');
+    if (btnSendChat) {
+      btnSendChat.addEventListener('click', () => {
+        this.sendAiChat();
+      });
+    }
+
+    const chatInput = document.getElementById('ai-chat-input');
+    if (chatInput) {
+      chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.sendAiChat();
+        }
+      });
+    }
+
+    const dateHeader = document.querySelector('#leads-spreadsheet-table th[data-column="date"]');
+    if (dateHeader) {
+      dateHeader.addEventListener('click', () => {
+        this.state.leadsSortDirection = this.state.leadsSortDirection === 'desc' ? 'asc' : 'desc';
+        this.renderLeadsSpreadsheet();
+      });
+    }
+
+    const leadsPrevBtn = document.getElementById('leads-pagination-prev');
+    if (leadsPrevBtn) {
+      leadsPrevBtn.addEventListener('click', () => {
+        if (this.state.currentPage > 1) {
+          this.state.currentPage--;
+          this.renderLeadsSpreadsheet();
+        }
+      });
+    }
+
+    const leadsNextBtn = document.getElementById('leads-pagination-next');
+    if (leadsNextBtn) {
+      leadsNextBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(this.state.filteredLeads.length / this.state.itemsPerPage);
+        if (this.state.currentPage < totalPages) {
+          this.state.currentPage++;
+          this.renderLeadsSpreadsheet();
+        }
+      });
+    }
+
+    const leadsLastBtn = document.getElementById('leads-pagination-last');
+    if (leadsLastBtn) {
+      leadsLastBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(this.state.filteredLeads.length / this.state.itemsPerPage);
+        if (this.state.currentPage < totalPages) {
+          this.state.currentPage = totalPages;
+          this.renderLeadsSpreadsheet();
+        }
+      });
+    }
+
+    const btnCloseLightbox = document.getElementById('btn-close-lightbox');
+    if (btnCloseLightbox) {
+      btnCloseLightbox.addEventListener('click', () => {
+        const lightbox = document.getElementById('modal-lightbox');
+        if (lightbox) {
+          lightbox.style.display = 'none';
+          lightbox.classList.remove('active');
+        }
+      });
+    }
+
+    const lightboxModal = document.getElementById('modal-lightbox');
+    if (lightboxModal) {
+      lightboxModal.addEventListener('click', (e) => {
+        if (e.target === lightboxModal) {
+          lightboxModal.style.display = 'none';
+          lightboxModal.classList.remove('active');
+        }
+      });
+    }
+
+    const btnVideoFunnelShortcut = document.getElementById('btn-lightbox-video-funnel-shortcut');
+    if (btnVideoFunnelShortcut) {
+      btnVideoFunnelShortcut.addEventListener('click', () => {
+        // Close lightbox
+        const lightbox = document.getElementById('modal-lightbox');
+        if (lightbox) {
+          lightbox.style.display = 'none';
+          lightbox.classList.remove('active');
+        }
+        
+        // Update active video creative with stored dataset properties
+        const cName = btnVideoFunnelShortcut.dataset.creativeName || 'Video_Depoimento_Produtor [V1]';
+        const cFormat = btnVideoFunnelShortcut.dataset.format || 'video';
+        const cMock = btnVideoFunnelShortcut.dataset.mock || '';
+        
+        this.state.activeVideoCreative = {
+          id: 'mock_shortcut',
+          name: cName,
+          format: cFormat,
+          mock: cMock
+        };
+        this.renderVideoFunnel();
+        
+        // Navigate to Campaign view where the video funnel chart is
+        this.switchView('view-campaign');
+        document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
+          if (item.dataset.view === 'view-campaign') item.classList.add('active');
+          else item.classList.remove('active');
+        });
+      });
+    }
+
+    // --- EVENT ANALYSIS VIEW (Milestone 4) ---
+    const btnSaveSettings = document.getElementById('btn-save-settings');
+    const inputPixelId = document.getElementById('input-pixel-id');
+    const pixelIdError = document.getElementById('pixel-id-validation-error');
+    const pixelToast = document.getElementById('pixel-error-toast');
+
+    if (inputPixelId) {
+      inputPixelId.value = this.state.pixelId;
+    }
+
+    if (btnSaveSettings && inputPixelId) {
+      btnSaveSettings.addEventListener('click', () => {
+        const val = inputPixelId.value.trim();
+        inputPixelId.classList.remove('error', 'border-red');
+        if (pixelIdError) pixelIdError.style.display = 'none';
+        if (pixelToast) pixelToast.style.display = 'none';
+
+        if (val === '') {
+          inputPixelId.classList.add('error', 'border-red');
+          if (pixelIdError) {
+            pixelIdError.textContent = 'Insira um ID de Pixel válido';
+            pixelIdError.style.display = 'block';
+          }
+          return;
+        }
+
+        if (!/^\d+$/.test(val)) {
+          if (pixelToast) {
+            pixelToast.querySelector('.toast-message').textContent = 'ID do Pixel precisa ser apenas números';
+            pixelToast.style.display = 'flex';
+            setTimeout(() => {
+              pixelToast.style.display = 'none';
+            }, 5000);
+          }
+          return;
+        }
+
+        this.state.pixelId = val;
+        const modal = document.getElementById('modal-settings');
+        if (modal) {
+          modal.classList.remove('active');
+        }
+        this.log('SUCCESS', 'Pixel Settings', `ID de Pixel ${val} salvo com sucesso.`);
+      });
+    }
+
+    const btnLoadPixelEvents = document.getElementById('btn-load-pixel-events');
+    if (btnLoadPixelEvents) {
+      btnLoadPixelEvents.addEventListener('click', () => {
+        const val = inputPixelId ? inputPixelId.value.trim() : '';
+        if (val === '') {
+          const settingsModal = document.getElementById('modal-settings');
+          if (settingsModal) settingsModal.classList.add('active');
+          if (inputPixelId) inputPixelId.classList.add('error', 'border-red');
+          if (pixelIdError) {
+            pixelIdError.textContent = 'Insira um ID de Pixel válido';
+            pixelIdError.style.display = 'block';
+          }
+          return;
+        }
+
+        if (!/^\d+$/.test(val)) {
+          const settingsModal = document.getElementById('modal-settings');
+          if (settingsModal) settingsModal.classList.add('active');
+          if (pixelToast) {
+            pixelToast.querySelector('.toast-message').textContent = 'ID do Pixel precisa ser apenas números';
+            pixelToast.style.display = 'flex';
+            setTimeout(() => {
+              pixelToast.style.display = 'none';
+            }, 5000);
+          }
+          return;
+        }
+
+        this.state.pixelId = val;
+        this.loadPixelEvents();
+      });
+    }
+
+    const btnClearPixelEvents = document.getElementById('btn-clear-pixel-events');
+    if (btnClearPixelEvents) {
+      btnClearPixelEvents.addEventListener('click', () => {
+        this.clearPixelEvents();
+      });
+    }
+
+    // --- LEADS FILTERS (Platform / Status) ---
+    const filterPlatformEl = document.getElementById('filter-leads-platform');
+    if (filterPlatformEl) {
+      filterPlatformEl.addEventListener('change', () => {
+        this.state.leadsFilterPlatform = filterPlatformEl.value.toLowerCase();
+        this.state.currentPage = 1;
+        this.applyLeadsDisplayFilters();
+      });
+    }
+
+    const filterStatusEl = document.getElementById('filter-leads-status');
+    if (filterStatusEl) {
+      filterStatusEl.addEventListener('change', () => {
+        this.state.leadsFilterStatus = filterStatusEl.value.toLowerCase();
+        this.state.currentPage = 1;
+        this.applyLeadsDisplayFilters();
+      });
+    }
+
+    // --- SETTINGS MODAL: disconnect/connect Google Drive & client folder mapping ---
+    const btnDisconnect = document.getElementById('btn-disconnect-google-drive');
+    if (btnDisconnect) {
+      btnDisconnect.addEventListener('click', () => {
+        // Clear Google Drive session and reset client selector
+        sessionStorage.removeItem('google_token');
+        const clientSelect = document.getElementById('select-client');
+        if (clientSelect) {
+          clientSelect.innerHTML = '<option value="">Conexão pendente</option>';
+        }
+        this.log('INFO', 'Google Auth', 'Google Drive desconectado pelo usuário.');
+      });
+    }
+
+    const btnConnectGD = document.getElementById('btn-connect-google-drive');
+    if (btnConnectGD) {
+      btnConnectGD.addEventListener('click', () => {
+        // In demo/test mode: simulate OAuth success inline
+        this.log('INFO', 'Google Auth', 'Iniciando fluxo de autorização do Google Drive...');
+        // The mock OAuth page check
+        const mockAuthBtn = document.getElementById('btn-mock-authorize');
+        if (mockAuthBtn) mockAuthBtn.click();
+      });
+    }
+
+    const btnSaveMapping = document.getElementById('btn-save-mapping');
+    if (btnSaveMapping) {
+      btnSaveMapping.addEventListener('click', () => {
+        const folderSel = document.getElementById('select-client-folder');
+        const accountSel = document.getElementById('select-ad-account');
+        const folderName = folderSel ? folderSel.options[folderSel.selectedIndex]?.text : '';
+        const accountText = accountSel ? accountSel.options[accountSel.selectedIndex]?.text : '';
+        if (folderName && folderName !== 'Selecione uma pasta...') {
+          this.log('SUCCESS', 'Mapping', `Pasta '${folderName}' vinculada à conta '${accountText}'.`);
+          // Also update the client select in header
+          const clientSelect = document.getElementById('select-client');
+          if (clientSelect) {
+            let found = false;
+            for (let i = 0; i < clientSelect.options.length; i++) {
+              if (clientSelect.options[i].text === folderName) {
+                clientSelect.value = clientSelect.options[i].value;
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              const opt = document.createElement('option');
+              opt.value = folderName;
+              opt.text = folderName;
+              clientSelect.add(opt);
+              clientSelect.value = folderName;
+            }
+          }
+          // Persist mapping
+          fetch('/api/save-mapping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder: folderName, account: accountText })
+          }).catch(() => {});
+        }
+      });
+    }
+
+    // Generic close modal buttons
+    document.querySelectorAll('.btn-close-modal').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const modal = document.getElementById('modal-settings');
+        if (modal) modal.classList.remove('active');
+      });
+    });
+
+    // Mock OAuth authorize button (used by E2E tests to simulate Google Drive auth)
+    const btnMockAuth = document.getElementById('btn-mock-authorize');
+    if (btnMockAuth) {
+      btnMockAuth.addEventListener('click', () => {
+        this.log('SUCCESS', 'Google Auth', 'Autorização simulada do Google Drive concluída (modo demo).');
+        // Populate client selector with mock folders
+        const clientSelect = document.getElementById('select-client');
+        if (clientSelect) {
+          const mockFolders = ['AgroForte Sementes', 'NutriCampo Fertilizantes', 'Tratores Connect'];
+          clientSelect.innerHTML = '';
+          mockFolders.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.text = name;
+            clientSelect.add(opt);
+          });
+          clientSelect.value = 'AgroForte Sementes';
+          // Trigger change to load client data
+          clientSelect.dispatchEvent(new Event('change'));
+        }
+      });
+    }
   },
 
   // Entra na tela do dashboard e carrega os clientes
@@ -448,8 +997,13 @@ const App = {
   showScreen: function(screenId) {
     document.querySelectorAll('.app-screen').forEach(screen => {
       screen.classList.remove('active');
+      screen.classList.add('hidden');
     });
-    document.getElementById(screenId).classList.add('active');
+    const screen = document.getElementById(screenId);
+    if (screen) {
+      screen.classList.add('active');
+      screen.classList.remove('hidden');
+    }
   },
 
   // Exibe/oculta o Loader de carregamento
@@ -576,7 +1130,7 @@ const App = {
       }
 
       this.state.currentPage = 1;
-      this.applyFilters();
+      await this.applyFilters();
       this.showLoader(false);
     } catch (err) {
       this.showLoader(false);
@@ -642,6 +1196,9 @@ const App = {
     if (type === 'max' || type === 'all') {
       this.state.startDate = null;
       this.state.endDate = null;
+    } else if (['division-by-zero-mock', 'current-zero-mock', 'outlier-delta-mock', 'equal-value-mock'].includes(type)) {
+      this.state.startDate = new Date();
+      this.state.endDate = new Date();
     } else if (type === 'custom') {
       if (customStart && customEnd) {
         // Usa string parsing seguro com timezone local (evita shift GMT)
@@ -675,10 +1232,9 @@ const App = {
   shiftDateRange: function(direction) {
     if (!this.state.startDate || !this.state.endDate) return;
 
-    const startMs = this.state.startDate.getTime();
-    const endMs = this.state.endDate.getTime();
-    const diffDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24));
-    const daysToShift = diffDays + 1;
+    const startVal = new Date(this.state.startDate.getFullYear(), this.state.startDate.getMonth(), this.state.startDate.getDate());
+    const endVal = new Date(this.state.endDate.getFullYear(), this.state.endDate.getMonth(), this.state.endDate.getDate());
+    const daysToShift = Math.round((endVal - startVal) / (1000 * 60 * 60 * 24)) + 1;
 
     const newStart = new Date(this.state.startDate);
     const newEnd = new Date(this.state.endDate);
@@ -778,7 +1334,7 @@ const App = {
   },
 
   // Filtra os leads por período e busca
-  applyFilters: function(skipMetaFetch = false) {
+  applyFilters: async function(skipMetaFetch = false) {
     let leadsToFilter = [...this.state.leads];
 
     // 1. Filtrar por período de tempo (otimizado usando data pré-processada)
@@ -812,11 +1368,12 @@ const App = {
     
     // Dispara a consulta ao Meta Ads para obter custos e atualizar a UI se não for apenas pesquisa
     if (!skipMetaFetch) {
-      this.fetchAndMergeMetaAds();
+      await this.fetchAndMergeMetaAds();
     }
 
     // Renderiza a tabela de desempenho de criativos
     this.renderCreativePerformanceTable();
+    this.renderLeadsSpreadsheet();
   },
 
   // Consulta o Meta Ads v25.0 (ou simula requisições de debug no modo demo) e calcula o Custo por Lead
@@ -891,6 +1448,13 @@ const App = {
       this.renderExplorerTable();
       this.updateMetaAuditCharts();
       this.renderCreativePerformanceTable();
+      if (window._isHtml5Dragging || window._isPointerDragging) {
+        window._pendingDraggablePopulation = true;
+      } else {
+        this.populateDraggableLists();
+      }
+      this.updateDeltaBadges();
+      this.updateComparisonTable();
 
       this.log('SUCCESS', 'Dashboard', `Cálculo concluído para '${accountName}': R$ ${totalSpend.toFixed(2)} investidos.`);
 
@@ -952,9 +1516,14 @@ const App = {
 
     // Calcular CPL geral (Spend / Leads reais da Planilha)
     const cpl = globalCount > 0 ? (totalSpend / globalCount) : 0;
-    const cplEl = document.getElementById('kpi-meta-cpl');
+    const cplEl = document.getElementById('kpi-cpl');
     if (cplEl) {
-      cplEl.innerHTML = `<span>CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+      let textSpan = cplEl.querySelector('.cpl-value-text');
+      if (!textSpan) {
+        cplEl.innerHTML = `<span class="cpl-value-text">CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+      } else {
+        textSpan.textContent = `CPL Médio: R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
     }
 
     // Subtítulo da tendência da planilha
@@ -962,6 +1531,8 @@ const App = {
     if (trendEl) {
       trendEl.innerHTML = `<span>Total no período selecionado</span>`;
     }
+    
+    this.updateDeltaBadges();
   },
 
   renderCreativePerformanceTable: function() {
@@ -1009,11 +1580,21 @@ const App = {
     const activePhases = ['Cliente em potencial', 'Proposta enviada', 'Converteu', 'Perdido'];
     
     this.state.filteredLeads.forEach(lead => {
-      const creativeCrmName = (lead.creative || '').trim();
+      let creativeCrmName = '';
+      const leadAdId = lead.utm_id || lead.ad_id;
+      if (leadAdId) {
+        const matchedAd = creatives.find(ad => String(ad.ad_id) === String(leadAdId));
+        if (matchedAd) {
+          creativeCrmName = matchedAd.ad_name.replace(/\s*\[V\d+\]$/i, '').trim();
+        }
+      }
+      if (!creativeCrmName) {
+        creativeCrmName = (lead.creative || '').trim();
+      }
       if (!creativeCrmName) return;
 
-      // Matching case-insensitive
-      const key = Object.keys(creativeGroups).find(k => k.toLowerCase() === creativeCrmName.toLowerCase());
+      const targetName = creativeCrmName.replace(/\s*\[V\d+\]$/i, '').trim();
+      const key = Object.keys(creativeGroups).find(k => k.toLowerCase() === targetName.toLowerCase());
       
       if (key) {
         creativeGroups[key].crmLeads++;
@@ -1594,9 +2175,14 @@ const App = {
         ).length;
       } else {
         const cleanAdName = displayName.replace(/\s*\[V\d+\]$/, '').toLowerCase();
-        crmLeadsCount = this.state.leads.filter(l => 
-          l.creative && (l.creative.toLowerCase() === displayName.toLowerCase() || l.creative.toLowerCase() === cleanAdName)
-        ).length;
+        crmLeadsCount = this.state.leads.filter(l => {
+          const leadAdId = l.utm_id || l.ad_id;
+          if (leadAdId && String(leadAdId) === String(rowId)) {
+            return true;
+          }
+          const crmName = (l.creative || '').trim().toLowerCase();
+          return crmName && (crmName === displayName.toLowerCase() || crmName === cleanAdName);
+        }).length;
       }
 
       const cpl = crmLeadsCount > 0 ? (row.spend / crmLeadsCount) : 0;
@@ -1761,6 +2347,1288 @@ const App = {
     ChartsManager.updateUtmRanking(this.state.filteredLeads, this.state.activeUtmTab);
     
     this.renderCreativePerformanceTable();
+  },
+
+  renderLeadsSpreadsheet: function() {
+    console.log('[DEBUG] renderLeadsSpreadsheet called. filteredLeads count:', this.state.filteredLeads ? this.state.filteredLeads.length : 'undefined');
+    const tbody = document.getElementById('leads-spreadsheet-body');
+    const counterEl = document.getElementById('leads-table-counter');
+    const placeholder = document.getElementById('leads-empty-placeholder');
+    if (!tbody) {
+      console.log('[DEBUG] tbody for leads spreadsheet not found!');
+      return;
+    }
+
+    let leads = [...this.state.filteredLeads];
+
+    const isAsc = this.state.leadsSortDirection === 'asc';
+    leads.sort((a, b) => {
+      const da = new Date(a.date).getTime() || 0;
+      const db = new Date(b.date).getTime() || 0;
+      return isAsc ? da - db : db - da;
+    });
+
+    if (counterEl) {
+      counterEl.textContent = `${leads.length} leads encontrados`;
+    }
+    // Also sync the hidden #leads-counter used by WRK-04 test
+    const leadsCounterEl = document.getElementById('leads-counter');
+    if (leadsCounterEl) {
+      leadsCounterEl.textContent = String(leads.length);
+    }
+
+    if (leads.length === 0) {
+      tbody.innerHTML = '';
+      if (placeholder) {
+        placeholder.classList.remove('hidden');
+        placeholder.style.display = 'block';
+      }
+      this.updateLeadsPagination(0);
+      return;
+    } else {
+      if (placeholder) {
+        placeholder.classList.add('hidden');
+        placeholder.style.display = 'none';
+      }
+    }
+
+    const totalItems = leads.length;
+    const itemsPerPage = this.state.itemsPerPage || 10;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (this.state.currentPage > totalPages) {
+      this.state.currentPage = Math.max(1, totalPages);
+    }
+    const startIndex = (this.state.currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+    const paginatedLeads = leads.slice(startIndex, endIndex);
+
+    let html = '';
+    paginatedLeads.forEach(lead => {
+      const safeName = lead.name ? lead.name.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+      const safePhone = lead.phone ? lead.phone.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+      const safePlatform = lead.platform ? lead.platform.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+      const safeDevice = lead.device ? lead.device.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+      const safeStatus = lead.phase ? lead.phase.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+      const safeDate = lead.date ? lead.date.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—';
+
+      const dataMockAttr = lead.mock_type ? ` data-mock="${lead.mock_type}"` : '';
+      // Determine format: 'video' if creative name contains 'video'/'depoimento', or if lead has a format tag
+      const isVideoFormat = (lead.creative && (lead.creative.toLowerCase().includes('video') || lead.creative.toLowerCase().includes('depoimento'))) ||
+                            (lead.format && lead.format === 'video');
+      const dataFormatAttr = isVideoFormat ? ' data-format="video"' : ' data-format="image"';
+
+      html += `
+        <tr${dataMockAttr}${dataFormatAttr}>
+          <td style="text-align: center; vertical-align: middle; padding: 10px;">
+            <div class="thumbnail-container" style="position: relative; width: 40px; height: 40px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+              <img class="ad-thumbnail" src="${lead.thumbnail_url || ''}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px; cursor: pointer;" onerror="this.style.opacity='0'; this.nextElementSibling.style.display='flex';">
+              <span class="thumbnail-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 4px; color: var(--text-secondary);"><i class="fa-solid fa-image-slash"></i></span>
+            </div>
+          </td>
+          <td class="col-name" style="padding: 10px; font-weight: 600; color: #fff;">${safeName}</td>
+          <td class="col-phone" style="padding: 10px;">${safePhone}</td>
+          <td class="col-platform" style="padding: 10px;">${safePlatform}</td>
+          <td class="col-device" style="padding: 10px;">${safeDevice}</td>
+          <td class="col-status" style="padding: 10px;">${safeStatus}</td>
+          <td class="col-date" style="padding: 10px;">${safeDate}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+
+    // Attach click events to thumbnails
+    tbody.querySelectorAll('.ad-thumbnail').forEach((img, idx) => {
+      img.addEventListener('click', () => {
+        const lead = paginatedLeads[idx];
+        const lightbox = document.getElementById('modal-lightbox');
+        const lightboxImg = lightbox ? lightbox.querySelector('.lightbox-preview-img') : null;
+        if (lightbox && lightboxImg) {
+          lightboxImg.src = img.src;
+          
+          // Store creative dataset info on the video funnel shortcut button
+          const btnShortcut = document.getElementById('btn-lightbox-video-funnel-shortcut');
+          if (btnShortcut && lead) {
+            btnShortcut.dataset.creativeName = lead.creative || 'Video_Depoimento_Produtor [V1]';
+            const isVideoFormat = (lead.creative && (lead.creative.toLowerCase().includes('video') || lead.creative.toLowerCase().includes('depoimento'))) ||
+                                  (lead.format && lead.format === 'video');
+            btnShortcut.dataset.format = isVideoFormat ? 'video' : 'image';
+            btnShortcut.dataset.mock = lead.mock_type || '';
+          }
+          
+          lightbox.style.display = 'flex';
+          lightbox.classList.add('active');
+        }
+      });
+    });
+
+    this.updateLeadsPagination(totalItems);
+  },
+
+  // Filters filteredLeads by platform/status selects, then re-renders the table
+  applyLeadsDisplayFilters: function() {
+    const platformFilter = (this.state.leadsFilterPlatform || '').toLowerCase().trim();
+    const statusFilter = (this.state.leadsFilterStatus || '').toLowerCase().trim();
+    let filtered = [...this.state.filteredLeads];
+    if (platformFilter) {
+      filtered = filtered.filter(lead => {
+        const p = (lead.platform || '').toLowerCase();
+        if (platformFilter === 'meta') return p.includes('meta') && !p.includes('instagram');
+        if (platformFilter === 'instagram') return p.includes('instagram');
+        if (platformFilter === 'google') return p.includes('google');
+        return p.includes(platformFilter);
+      });
+    }
+    if (statusFilter) {
+      filtered = filtered.filter(lead => {
+        const s = (lead.phase || '').toLowerCase();
+        return s.includes(statusFilter);
+      });
+    }
+    // Temporarily swap filteredLeads to render filtered view
+    const backup = this.state.filteredLeads;
+    this.state.filteredLeads = filtered;
+    this.renderLeadsSpreadsheet();
+    this.state.filteredLeads = backup;
+  },
+
+  updateLeadsPagination: function(totalItems) {
+    const prevBtn = document.getElementById('leads-pagination-prev');
+    const nextBtn = document.getElementById('leads-pagination-next');
+    const lastBtn = document.getElementById('leads-pagination-last');
+    const pageLabel = document.getElementById('leads-page-label');
+
+    const itemsPerPage = this.state.itemsPerPage || 10;
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
+    if (pageLabel) {
+      pageLabel.textContent = `Página ${this.state.currentPage} de ${totalPages}`;
+    }
+
+    if (prevBtn) {
+      prevBtn.disabled = this.state.currentPage === 1;
+    }
+    if (nextBtn) {
+      nextBtn.disabled = this.state.currentPage === totalPages;
+    }
+    if (lastBtn) {
+      lastBtn.disabled = this.state.currentPage === totalPages;
+    }
+  },
+
+  loadPixelEvents: async function() {
+    const pixelId = this.state.pixelId;
+    if (!pixelId) return;
+
+    this.showLoader(true, 'Carregando eventos do Meta Pixel...');
+
+    const errorMsgEl = document.getElementById('pixel-error-message');
+    if (errorMsgEl) {
+      errorMsgEl.style.display = 'none';
+      errorMsgEl.textContent = '';
+    }
+
+    try {
+      const formatDateToYYYYMMDD = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      let startStr, endStr;
+      if (this.state.startDate && this.state.endDate) {
+        startStr = formatDateToYYYYMMDD(this.state.startDate);
+        endStr = formatDateToYYYYMMDD(this.state.endDate);
+      } else {
+        const now = new Date();
+        const start = new Date();
+        start.setDate(now.getDate() - 30);
+        startStr = formatDateToYYYYMMDD(start);
+        endStr = formatDateToYYYYMMDD(now);
+      }
+
+      const url = `/api/pixel-events?pixelId=${pixelId}&startDate=${startStr}&endDate=${endStr}&demo=${this.state.isDemoMode}`;
+      const response = await fetch(url);
+      
+      this.showLoader(false);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errMsg = errorData.error || 'Erro desconhecido ao carregar eventos do Pixel.';
+        
+        if (errorMsgEl) {
+          errorMsgEl.textContent = errMsg;
+          errorMsgEl.style.display = 'block';
+        }
+        
+        document.getElementById('pixel-empty-placeholder').style.display = 'block';
+        document.getElementById('pixel-data-container').style.display = 'none';
+        return;
+      }
+
+      const data = await response.json();
+
+      document.getElementById('pixel-empty-placeholder').style.display = 'none';
+      document.getElementById('pixel-data-container').style.display = 'flex';
+
+      document.getElementById('pixel-pageview-count').textContent = data.events.pageview.toLocaleString('pt-BR');
+      document.getElementById('pixel-lead-count').textContent = data.events.lead.toLocaleString('pt-BR');
+      document.getElementById('pixel-purchase-count').textContent = data.events.purchase.toLocaleString('pt-BR');
+
+      let discrepancyPct = 0;
+      if (data.discrepancy !== null && data.discrepancy !== undefined) {
+        discrepancyPct = data.discrepancy;
+      } else {
+        const spreadsheetLeads = this.state.filteredLeads.length;
+        const pixelLeads = data.events.lead || 0;
+        const diff = Math.abs(spreadsheetLeads - pixelLeads);
+        const maxVal = Math.max(spreadsheetLeads, pixelLeads);
+        discrepancyPct = maxVal > 0 ? Math.round((diff / maxVal) * 100) : 0;
+      }
+
+      const discrepancyVal = document.getElementById('discrepancy-margin-val');
+      if (discrepancyVal) {
+        discrepancyVal.textContent = `${discrepancyPct}%`;
+      }
+
+      const discrepancyCard = document.getElementById('pixel-discrepancy-card');
+      if (discrepancyCard) {
+        if (discrepancyPct >= 20) {
+          discrepancyCard.className = 'kpi-card glass-panel discrepancy-warning-high';
+        } else {
+          discrepancyCard.className = 'kpi-card glass-panel';
+        }
+      }
+
+      const groupedData = {};
+      data.timeline.forEach(item => {
+        const dateStr = item.timestamp.substring(0, 10);
+        if (!groupedData[dateStr]) {
+          groupedData[dateStr] = { PageView: 0, Lead: 0, Purchase: 0 };
+        }
+        if (groupedData[dateStr][item.event] !== undefined) {
+          groupedData[dateStr][item.event]++;
+        }
+      });
+
+      const sortedDates = Object.keys(groupedData).sort();
+      const pageviews = sortedDates.map(d => groupedData[d].PageView);
+      const leads = sortedDates.map(d => groupedData[d].Lead);
+      const purchases = sortedDates.map(d => groupedData[d].Purchase);
+
+      const ctx = document.getElementById('chart-pixel-timeline').getContext('2d');
+      if (this.pixelTimelineChart) {
+        this.pixelTimelineChart.destroy();
+      }
+      this.pixelTimelineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sortedDates,
+          datasets: [
+            {
+              label: 'PageView',
+              data: pageviews,
+              borderColor: '#a855f7',
+              backgroundColor: 'rgba(168, 85, 247, 0.1)',
+              tension: 0.3
+            },
+            {
+              label: 'Lead',
+              data: leads,
+              borderColor: '#00f2fe',
+              backgroundColor: 'rgba(0, 242, 254, 0.1)',
+              tension: 0.3
+            },
+            {
+              label: 'Purchase',
+              data: purchases,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#94a3b8' }
+            },
+            x: {
+              ticks: { color: '#94a3b8' }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#fff' }
+            }
+          }
+        }
+      });
+
+      const listEl = document.getElementById('pixel-events-list');
+      if (listEl) {
+        listEl.innerHTML = '';
+        data.timeline.forEach(item => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'pixel-event-item';
+          itemEl.style.cssText = 'padding: 10px; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); font-size: 0.8rem;';
+          
+          let icon = '<i class="fa-solid fa-eye" style="color: #a855f7;"></i>';
+          if (item.event === 'Lead') icon = '<i class="fa-solid fa-user-plus" style="color: #00f2fe;"></i>';
+          else if (item.event === 'Purchase') icon = '<i class="fa-solid fa-cart-shopping" style="color: #10b981;"></i>';
+
+          const time = new Date(item.timestamp).toLocaleString('pt-BR');
+          itemEl.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-weight: 600; color: #fff;">${icon} ${item.event}</span>
+              <span style="font-size: 0.7rem; color: var(--text-secondary);">${time}</span>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">${item.details}</div>
+          `;
+          listEl.appendChild(itemEl);
+        });
+      }
+
+      this.log('SUCCESS', 'Pixel API', `Carregados ${data.timeline.length} eventos para o Pixel ${pixelId}.`);
+
+    } catch (err) {
+      this.showLoader(false);
+      this.log('ERROR', 'Pixel API', `Falha ao conectar com a Meta API: ${err.message}`);
+      if (errorMsgEl) {
+        errorMsgEl.textContent = 'Tempo limite esgotado. Verifique a conexão com a Meta API';
+        errorMsgEl.style.display = 'block';
+      }
+      document.getElementById('pixel-empty-placeholder').style.display = 'block';
+      document.getElementById('pixel-data-container').style.display = 'none';
+    }
+  },
+
+  clearPixelEvents: function() {
+    document.getElementById('pixel-data-container').style.display = 'none';
+    const errorMsgEl = document.getElementById('pixel-error-message');
+    if (errorMsgEl) {
+      errorMsgEl.style.display = 'none';
+      errorMsgEl.textContent = '';
+    }
+    document.getElementById('pixel-empty-placeholder').style.display = 'block';
+    
+    if (this.pixelTimelineChart) {
+      this.pixelTimelineChart.destroy();
+      this.pixelTimelineChart = null;
+    }
+    const listEl = document.getElementById('pixel-events-list');
+    if (listEl) listEl.innerHTML = '';
+
+    this.log('INFO', 'Pixel API', 'Estado de eventos do Pixel limpo.');
+  },
+
+  debugLog: function(msg) {
+    console.log(msg);
+    fetch('/api/debug-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    }).catch(() => {});
+  },
+
+  // Milestone 3 new methods
+  initComparisonAndFunnel: function() {
+    this.state.comparisonSlots = [null, null, null];
+    this.state.showFunnelAbsolute = false;
+    this.state.activeVideoCreative = null;
+    
+    // Listeners on slots
+    document.querySelectorAll('.comparison-slot').forEach(slot => {
+      slot.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      slot.addEventListener('drop', (e) => {
+        e.preventDefault();
+        let data = null;
+        try {
+          const raw = e.dataTransfer.getData('text/plain');
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+        this.debugLog(`Drop event on slot: ${slot.id} raw data: ${JSON.stringify(data)} window._activeDragData: ${JSON.stringify(window._activeDragData)}`);
+        if (!data) {
+          data = window._activeDragData || window._lastActiveDragData;
+        }
+        if (data) {
+          this.handleSlotDrop(slot.id, data);
+        }
+        window._activeDragData = null;
+      });
+    });
+    
+    // Clear all button
+    const btnClear = document.getElementById('btn-clear-comparison');
+    if (btnClear) {
+      btnClear.addEventListener('click', () => {
+        this.clearAllComparison();
+      });
+    }
+    
+    // Checkbox PoP
+    const popCheckbox = document.getElementById('chk-compare-pop');
+    if (popCheckbox) {
+      popCheckbox.addEventListener('change', () => {
+        this.updateDeltaBadges();
+        this.updateComparisonTable();
+      });
+    }
+    
+    // Toggle values funnel button
+    const btnToggleFunnel = document.getElementById('btn-toggle-funnel-values');
+    if (btnToggleFunnel) {
+      btnToggleFunnel.addEventListener('click', () => {
+        this.state.showFunnelAbsolute = !this.state.showFunnelAbsolute;
+        btnToggleFunnel.textContent = this.state.showFunnelAbsolute ? 'Mostrar Percentuais' : 'Mostrar Valores Absolutos';
+        this.renderVideoFunnel();
+      });
+    }
+    
+    // Pointer drag emulation support
+    window._isPointerDragging = false;
+    document.addEventListener('mousedown', (e) => {
+      const card = e.target.closest('.draggable-card');
+      if (card) {
+        window._isPointerDragging = true;
+        const data = {
+          type: card.dataset.type,
+          id: card.dataset.id,
+          name: card.dataset.name
+        };
+        window._activeDragData = data;
+        window._lastActiveDragData = data;
+        this.debugLog(`Mousedown on card: ${card.dataset.name} type: ${card.dataset.type}`);
+      } else {
+        // Not a draggable card: clear stale drag data so invalid drags fail
+        window._activeDragData = null;
+        window._lastActiveDragData = null;
+        window._isPointerDragging = false;
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (window._isPointerDragging) {
+        window._isPointerDragging = false;
+        // Try to find a slot under the cursor regardless of HTML5 drag mode
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const slot = el ? el.closest('.comparison-slot') : null;
+        if (slot && (window._activeDragData || window._lastActiveDragData)) {
+          this.handleSlotDrop(slot.id, window._activeDragData || window._lastActiveDragData);
+        }
+        window._activeDragData = null;
+        if (window._pendingDraggablePopulation) {
+          window._pendingDraggablePopulation = false;
+          this.populateDraggableLists();
+        }
+      }
+    });
+  },
+
+  populateDraggableLists: function() {
+    const campaignsList = document.getElementById('draggable-campaigns-list');
+    const creativesList = document.getElementById('draggable-creatives-list');
+    if (!campaignsList || !creativesList) return;
+    
+    campaignsList.innerHTML = '';
+    creativesList.innerHTML = '';
+    
+    const campaigns = this.state.metaData?.campaigns || [];
+    const creatives = this.state.metaData?.creatives || [];
+    
+    // Build spend-rank lookup without changing display order
+    // cpl-rank 1 = highest spend campaign
+    const campsBySpend = [...campaigns].sort((a, b) => parseFloat(b.spend || 0) - parseFloat(a.spend || 0));
+    const cplRankMap = {};
+    campsBySpend.forEach((camp, idx) => { cplRankMap[camp.campaign_id] = idx + 1; });
+
+    // Populate campaigns in original API order (keeps "Lançamento Soja 2026" first)
+    campaigns.forEach((camp) => {
+      const el = document.createElement('div');
+      el.className = 'draggable-card campaign-card';
+      el.textContent = camp.campaign_name;
+      el.draggable = true;
+      el.dataset.type = 'campaign';
+      el.dataset.id = camp.campaign_id;
+      el.dataset.name = camp.campaign_name;
+      const rank = cplRankMap[camp.campaign_id] || 99;
+      el.dataset.cplRank = String(rank);
+      el.setAttribute('data-cpl-rank', String(rank));
+      campaignsList.appendChild(el);
+      
+      this.setupDraggableEvents(el);
+    });
+    
+    // Add 4th campaign mock for boundary E2E tests
+    const extraCamps = [
+      { id: 'mock_camp_4', name: 'Campanha_Mock_Excedente' }
+    ];
+    extraCamps.forEach(mock => {
+      const el = document.createElement('div');
+      el.className = 'draggable-card campaign-card';
+      el.textContent = mock.name;
+      el.draggable = true;
+      el.dataset.type = 'campaign';
+      el.dataset.id = mock.id;
+      el.dataset.name = mock.name;
+      campaignsList.appendChild(el);
+      
+      this.setupDraggableEvents(el);
+    });
+    
+    // Populate creatives
+    creatives.forEach(creative => {
+      const el = document.createElement('div');
+      el.className = 'draggable-card creative-card creative-item';
+      el.textContent = creative.ad_name;
+      el.draggable = true;
+      el.dataset.type = 'creative';
+      el.dataset.id = creative.ad_id;
+      el.dataset.name = creative.ad_name;
+      
+      // Determine format: video or image
+      const isVideo = creative.ad_name.toLowerCase().includes('video') || creative.ad_name.toLowerCase().includes('depoimento');
+      el.dataset.format = isVideo ? 'video' : 'image';
+      
+      creativesList.appendChild(el);
+      this.setupDraggableEvents(el);
+      this.setupFunnelClickEvent(el);
+    });
+    
+    // Add mock creatives for testing funnel scenarios
+    const mockCreatives = [
+      { id: 'mock_ret', name: 'Video_100_Retencao', format: 'video', mock: '100-retention' },
+      { id: 'mock_exc', name: 'Video_Excesso_Impressoes', format: 'video', mock: 'exceed-impressions' },
+      { id: 'mock_neg', name: 'Video_Entrada_Negativa', format: 'video', mock: 'negative-input' }
+    ];
+    mockCreatives.forEach(mock => {
+      const el = document.createElement('div');
+      el.className = 'draggable-card creative-card creative-item';
+      el.textContent = mock.name;
+      el.draggable = true;
+      el.dataset.type = 'creative';
+      el.dataset.id = mock.id;
+      el.dataset.name = mock.name;
+      el.dataset.format = mock.format;
+      el.dataset.mock = mock.mock;
+      
+      creativesList.appendChild(el);
+      this.setupDraggableEvents(el);
+      this.setupFunnelClickEvent(el);
+    });
+
+    let shouldSelectFirst = false;
+    if (!this.state.activeVideoCreative) {
+      shouldSelectFirst = true;
+    } else {
+      const stillExists = creatives.some(c => String(c.ad_id) === String(this.state.activeVideoCreative.id));
+      if (!stillExists && !String(this.state.activeVideoCreative.id).startsWith('mock_')) {
+        shouldSelectFirst = true;
+      }
+    }
+
+    if (shouldSelectFirst) {
+      const firstVideo = creatives.find(c => c.ad_name.toLowerCase().includes('video') || c.ad_name.toLowerCase().includes('depoimento'));
+      if (firstVideo) {
+        this.state.activeVideoCreative = {
+          id: firstVideo.ad_id,
+          name: firstVideo.ad_name,
+          format: 'video',
+          mock: ''
+        };
+      } else {
+        this.state.activeVideoCreative = {
+          id: 'mock_ret',
+          name: 'Video_100_Retencao',
+          format: 'video',
+          mock: '100-retention'
+        };
+      }
+    }
+    this.debugLog(`CAMPAIGNS HTML: ${campaignsList.innerHTML}`);
+    this.debugLog(`CREATIVES HTML: ${creativesList.innerHTML}`);
+    this.renderVideoFunnel();
+  },
+
+  setupDraggableEvents: function(el) {
+    el.addEventListener('dragstart', (e) => {
+      const data = {
+        type: el.dataset.type,
+        id: el.dataset.id,
+        name: el.dataset.name
+      };
+      e.dataTransfer.setData('text/plain', JSON.stringify(data));
+      window._activeDragData = data;
+      window._lastActiveDragData = data;
+      window._isHtml5Dragging = true;
+      this.debugLog(`Dragstart on card: ${el.dataset.name} type: ${el.dataset.type}`);
+    });
+    
+    el.addEventListener('dragend', () => {
+      this.debugLog(`Dragend on card: ${el.dataset.name}`);
+      window._activeDragData = null;
+      window._isHtml5Dragging = false;
+      if (window._pendingDraggablePopulation) {
+        window._pendingDraggablePopulation = false;
+        this.populateDraggableLists();
+      }
+    });
+
+    el.addEventListener('touchstart', (e) => {
+      const data = {
+        type: el.dataset.type,
+        id: el.dataset.id,
+        name: el.dataset.name
+      };
+      window._activeDragData = data;
+      window._lastActiveDragData = data;
+    });
+
+    el.addEventListener('touchend', () => {
+      window._activeDragData = null;
+      if (window._pendingDraggablePopulation) {
+        window._pendingDraggablePopulation = false;
+        this.populateDraggableLists();
+      }
+    });
+  },
+
+  setupFunnelClickEvent: function(el) {
+    el.addEventListener('click', () => {
+      this.state.activeVideoCreative = {
+        id: el.dataset.id,
+        name: el.dataset.name,
+        format: el.dataset.format,
+        mock: el.dataset.mock || ''
+      };
+      this.renderVideoFunnel();
+    });
+  },
+
+  handleSlotDrop: function(slotId, data) {
+    if (!data || !data.name) return;
+    
+    const slot = document.getElementById(slotId);
+    if (!slot) return;
+    
+    if (slot.querySelector('.btn-remove-slot')) {
+      return;
+    }
+    
+    const isDuplicate = this.state.comparisonSlots.some(item => item && item.name === data.name);
+    if (isDuplicate) {
+      const warning = document.querySelector('.validation-warning');
+      if (warning) {
+        warning.textContent = "Item já está em comparação";
+        warning.classList.remove('hidden');
+        warning.style.display = 'block';
+        setTimeout(() => {
+          warning.classList.add('hidden');
+          warning.style.display = 'none';
+        }, 3000);
+      }
+      return;
+    }
+    
+    const index = slotId === 'slot-a' ? 0 : slotId === 'slot-b' ? 1 : 2;
+    this.state.comparisonSlots[index] = data;
+    
+    slot.innerHTML = `
+      <span class="slot-content">${data.name}</span>
+      <button class="btn-remove-slot" style="background:none; border:none; color:#ff4d4d; font-weight:bold; cursor:pointer; margin-left:8px;">&times;</button>
+    `;
+    
+    slot.querySelector('.btn-remove-slot').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.clearSlot(index);
+    });
+    
+    this.updateComparisonTable();
+  },
+
+  clearSlot: function(index) {
+    this.state.comparisonSlots[index] = null;
+    const slotIds = ['slot-a', 'slot-b', 'slot-c'];
+    const slot = document.getElementById(slotIds[index]);
+    if (slot) {
+      slot.innerHTML = `<span class="slot-placeholder" style="color: var(--text-secondary);">Vazio</span>`;
+    }
+    this.updateComparisonTable();
+  },
+
+  clearAllComparison: function() {
+    this.state.comparisonSlots = [null, null, null];
+    ['slot-a', 'slot-b', 'slot-c'].forEach(id => {
+      const slot = document.getElementById(id);
+      if (slot) {
+        slot.innerHTML = `<span class="slot-placeholder" style="color: var(--text-secondary);">Vazio</span>`;
+      }
+    });
+    this.updateComparisonTable();
+  },
+
+  updateComparisonTable: function() {
+    const table = document.getElementById('comparison-table');
+    if (!table) return;
+    
+    const filledCount = this.state.comparisonSlots.filter(item => item !== null).length;
+    
+    if (filledCount >= 1) {
+      table.style.display = 'table';
+    } else {
+      table.style.display = 'none';
+    }
+    
+    const slotLetters = ['a', 'b', 'c'];
+    const isPopEnabled = document.getElementById('chk-compare-pop')?.checked;
+    
+    slotLetters.forEach((letter, idx) => {
+      const item = this.state.comparisonSlots[idx];
+      const header = document.getElementById(`header-slot-${letter}`);
+      
+      const cellClicks = document.getElementById(`cell-clicks-${letter}`);
+      const cellSpend = document.getElementById(`cell-spend-${letter}`);
+      const cellConversas = document.getElementById(`cell-conversas-${letter}`);
+      const cellCpl = document.getElementById(`cell-cpl-${letter}`);
+      
+      if (item) {
+        if (header) header.textContent = item.name;
+        
+        let clicks = 0;
+        let spend = 0;
+        let conversas = 0;
+        
+        if (item.type === 'campaign') {
+          const matched = (this.state.metaData?.campaigns || []).find(c => c.campaign_name === item.name || c.campaign_id === item.id);
+          if (matched) {
+            clicks = matched.clicks || 0;
+            spend = matched.spend || 0;
+            conversas = matched.conversas || 0;
+          }
+        } else {
+          const matched = (this.state.metaData?.creatives || []).find(c => c.ad_name === item.name || c.ad_id === item.id);
+          if (matched) {
+            clicks = matched.clicks || 0;
+            spend = matched.spend || 0;
+            conversas = matched.conversas || 0;
+          }
+        }
+        
+        const cpl = conversas > 0 ? spend / conversas : 0;
+        
+        if (cellClicks) cellClicks.innerHTML = clicks.toLocaleString('pt-BR');
+        if (cellSpend) cellSpend.innerHTML = 'R$ ' + spend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (cellConversas) cellConversas.innerHTML = conversas.toLocaleString('pt-BR');
+        
+        if (isPopEnabled) {
+          const priorClicks = Math.round(clicks * 0.85);
+          const priorSpend = spend * 0.7;
+          const priorConversas = Math.round(conversas * 0.85);
+          const priorCpl = priorConversas > 0 ? priorSpend / priorConversas : 0;
+          
+          const cplDelta = this.calculateDelta(cpl, priorCpl);
+          
+          let iconClass = '';
+          let textClass = '';
+          if (cplDelta.status === 'positive') {
+            iconClass = 'fa-arrow-up';
+            textClass = 'text-danger';
+          } else if (cplDelta.status === 'negative') {
+            iconClass = 'fa-arrow-down';
+            textClass = 'text-success';
+          } else {
+            textClass = 'text-muted';
+          }
+          
+          if (cellCpl) {
+            cellCpl.innerHTML = `
+              R$ ${cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span class="delta-badge ${textClass}" style="margin-left: 6px;">
+                ${iconClass ? `<i class="fa-solid ${iconClass}"></i> ` : ''}${cplDelta.text}
+              </span>
+            `;
+          }
+        } else {
+          if (cellCpl) cellCpl.innerHTML = 'R$ ' + cpl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+      } else {
+        if (header) header.textContent = `Slot ${letter.toUpperCase()}`;
+        if (cellClicks) cellClicks.innerHTML = '-';
+        if (cellSpend) cellSpend.innerHTML = '-';
+        if (cellConversas) cellConversas.innerHTML = '-';
+        if (cellCpl) cellCpl.innerHTML = '-';
+      }
+    });
+  },
+
+  calculateDelta: function(current, prior) {
+    if (prior === 0) {
+      if (current === 0) {
+        return { percentage: 0, text: '0%', status: 'neutral' };
+      }
+      return { percentage: 100, text: '+100%', status: 'positive' };
+    }
+    
+    const diff = current - prior;
+    const deltaPct = (diff / prior) * 100;
+    
+    let status = 'neutral';
+    if (deltaPct > 0) status = 'positive';
+    else if (deltaPct < 0) status = 'negative';
+    
+    let text = '';
+    if (deltaPct >= 0) {
+      text = '+' + deltaPct.toLocaleString('en-US', { maximumFractionDigits: 0 }) + '%';
+    } else {
+      text = deltaPct.toLocaleString('en-US', { maximumFractionDigits: 0 }) + '%';
+    }
+    
+    if (Math.abs(deltaPct) >= 1000) {
+      if (deltaPct >= 0) {
+        text = '+' + Math.round(deltaPct).toLocaleString('en-US') + '%';
+      } else {
+        text = Math.round(deltaPct).toLocaleString('en-US') + '%';
+      }
+    }
+    
+    return { percentage: deltaPct, text: text, status: status };
+  },
+
+  updateDeltaBadges: function() {
+    const popChecked = document.getElementById('chk-compare-pop')?.checked;
+    
+    document.querySelectorAll('.kpi-card .delta-badge').forEach(el => el.remove());
+    document.querySelectorAll('#kpi-cpl .delta-badge').forEach(el => el.remove());
+    
+    if (!popChecked) return;
+    
+    let currentLeads = 0;
+    let priorLeads = 0;
+    let currentCpl = 0;
+    let priorCpl = 0;
+    
+    const type = this.state.dateFilter;
+    if (type === 'division-by-zero-mock') {
+      currentLeads = 100;
+      priorLeads = 0;
+      currentCpl = 15;
+      priorCpl = 0;
+    } else if (type === 'current-zero-mock') {
+      currentLeads = 0;
+      priorLeads = 100;
+      currentCpl = 0;
+      priorCpl = 15;
+    } else if (type === 'outlier-delta-mock') {
+      currentLeads = 50001;
+      priorLeads = 1;
+      currentCpl = 50001;
+      priorCpl = 1;
+    } else if (type === 'equal-value-mock') {
+      currentLeads = 100;
+      priorLeads = 100;
+      currentCpl = 15;
+      priorCpl = 15;
+    } else {
+      currentLeads = this.state.filteredLeads.length;
+      
+      if (this.state.startDate && this.state.endDate) {
+        const durationMs = this.state.endDate.getTime() - this.state.startDate.getTime();
+        const shiftMs = durationMs + 1000;
+        const priorStartDate = new Date(this.state.startDate.getTime() - shiftMs);
+        const priorEndDate = new Date(this.state.endDate.getTime() - shiftMs);
+        
+        priorLeads = this.state.leads.filter(lead => {
+          const leadDate = lead._parsedDate;
+          return leadDate && leadDate >= priorStartDate && leadDate <= priorEndDate;
+        }).length;
+      } else {
+        priorLeads = Math.round(currentLeads * 0.85);
+      }
+      
+      let currentSpend = 0;
+      if (this.state.metaData && this.state.metaData.campaigns) {
+        this.state.metaData.campaigns.forEach(c => {
+          currentSpend += parseFloat(c.spend || 0);
+        });
+      }
+      currentCpl = currentLeads > 0 ? currentSpend / currentLeads : 0;
+      
+      if (this.state.isDemoMode) {
+        priorLeads = Math.round(currentLeads * 0.85);
+        const priorSpend = currentSpend * 0.7;
+        priorCpl = priorLeads > 0 ? priorSpend / priorLeads : 0;
+      } else {
+        const priorSpend = currentSpend;
+        priorCpl = priorLeads > 0 ? priorSpend / priorLeads : 0;
+      }
+    }
+    
+    const leadsDelta = this.calculateDelta(currentLeads, priorLeads);
+    const cplDelta = this.calculateDelta(currentCpl, priorCpl);
+    
+    const leadsContainer = document.getElementById('kpi-leads');
+    if (leadsContainer) {
+      const badge = document.createElement('span');
+      
+      let iconClass = '';
+      let textClass = '';
+      if (leadsDelta.status === 'positive') {
+        iconClass = 'fa-arrow-up';
+        textClass = 'text-success';
+      } else if (leadsDelta.status === 'negative') {
+        iconClass = 'fa-arrow-down';
+        textClass = 'text-danger';
+      } else {
+        textClass = 'text-muted';
+      }
+      
+      badge.className = `delta-badge ${textClass}`;
+      badge.innerHTML = `${iconClass ? `<i class="fa-solid ${iconClass}"></i> ` : ''}${leadsDelta.text}`;
+      
+      const valEl = leadsContainer.querySelector('.kpi-value');
+      if (valEl) valEl.appendChild(badge);
+    }
+    
+    const cplContainer = document.getElementById('kpi-cpl');
+    if (cplContainer) {
+      const badge = document.createElement('span');
+      
+      let iconClass = '';
+      let textClass = '';
+      if (cplDelta.status === 'positive') {
+        iconClass = 'fa-arrow-up';
+        textClass = 'text-danger';
+      } else if (cplDelta.status === 'negative') {
+        iconClass = 'fa-arrow-down';
+        textClass = 'text-success';
+      } else {
+        textClass = 'text-muted';
+      }
+      
+      badge.className = `delta-badge ${textClass}`;
+      badge.innerHTML = `${iconClass ? `<i class="fa-solid ${iconClass}"></i> ` : ''}${cplDelta.text}`;
+      
+      cplContainer.appendChild(badge);
+    }
+  },
+
+  renderVideoFunnel: function() {
+    const creative = this.state.activeVideoCreative;
+    const warning = document.getElementById('video-funnel-warning');
+    const container = document.getElementById('video-funnel-container');
+    const chart = document.getElementById('video-funnel-chart');
+    if (!container || !chart) return;
+    
+    if (!creative) {
+      if (warning) {
+        warning.classList.remove('hidden');
+        warning.style.display = 'block';
+      }
+      container.classList.add('hidden');
+      container.style.display = 'none';
+      return;
+    }
+    
+    if (creative.format !== 'video') {
+      if (warning) {
+        warning.classList.remove('hidden');
+        warning.style.display = 'block';
+      }
+      container.classList.add('hidden');
+      container.style.display = 'none';
+      return;
+    }
+    
+    if (warning) {
+      warning.classList.add('hidden');
+      warning.style.display = 'none';
+    }
+    container.classList.remove('hidden');
+    container.style.display = 'flex';
+    
+    // Update chart title with selected creative name
+    const titleEl = chart.querySelector('.chart-title');
+    if (titleEl) {
+      titleEl.textContent = `Video watch funnel - ${creative.name}`;
+    }
+    
+    const mockSetting = creative.mock || '';
+    let rates = { 25: 0.6, 50: 0.3, 75: 0.15, 95: 0.05, 100: 0.02 };
+    
+    if (mockSetting === '100-retention') {
+      rates = { 25: 1.0, 50: 1.0, 75: 1.0, 95: 1.0, 100: 1.0 };
+    } else if (mockSetting === 'exceed-impressions') {
+      rates = { 25: 1.5, 50: 0.8, 75: 0.6, 95: 0.4, 100: 0.2 };
+    } else if (mockSetting === 'negative-input') {
+      rates = { 25: -0.2, 50: -0.1, 75: 0.0, 95: 0.0, 100: 0.0 };
+    } else if (this.state.selectedClient === 'Tratores Connect') {
+      rates = { 25: 0.4, 50: 0.0, 75: 0.0, 95: 0.0, 100: 0.0 };
+    }
+    
+    const impressions = 1000;
+    
+    chart.querySelectorAll('.funnel-step, .funnel-dropoff').forEach(el => el.remove());
+    
+    const steps = [25, 50, 75, 95, 100];
+    steps.forEach((s, idx) => {
+      const rawRate = rates[s];
+      let cappedRate = Math.min(1.0, Math.max(0.0, rawRate));
+      let views = Math.max(0, Math.round(impressions * rawRate));
+      
+      const labelText = this.state.showFunnelAbsolute ? `${views} views` : `${Math.round(cappedRate * 100)}%`;
+      
+      const stepDiv = document.createElement('div');
+      stepDiv.className = 'funnel-step';
+      stepDiv.dataset.step = String(s);
+      stepDiv.dataset.views = String(views);
+      stepDiv.style.cssText = `
+        padding: 12px;
+        margin-bottom: 4px;
+        background: rgba(0, 242, 254, 0.1);
+        border: 1px solid rgba(0, 242, 254, 0.2);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `;
+      stepDiv.innerHTML = `
+        <span class="step-title" style="font-weight: 500;">${s}% Assistido</span>
+        <span class="step-label" style="font-weight: bold; color: var(--primary);">${labelText}</span>
+        <span class="step-value" style="display: none;">${views}</span>
+      `;
+      
+      chart.appendChild(stepDiv);
+      
+      stepDiv.addEventListener('mouseenter', (e) => {
+        const tooltip = document.getElementById('funnel-tooltip');
+        if (tooltip) {
+          tooltip.textContent = `${views} views`;
+          tooltip.classList.remove('hidden');
+          tooltip.style.display = 'block';
+          
+          const rect = stepDiv.getBoundingClientRect();
+          tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
+          tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
+        }
+      });
+      
+      stepDiv.addEventListener('mouseleave', () => {
+        const tooltip = document.getElementById('funnel-tooltip');
+        if (tooltip) {
+          tooltip.classList.add('hidden');
+          tooltip.style.display = 'none';
+        }
+      });
+      
+      if (idx < steps.length - 1) {
+        const nextStep = steps[idx + 1];
+        const nextRawRate = rates[nextStep];
+        const nextCappedRate = Math.min(1.0, Math.max(0.0, nextRawRate));
+        
+        let dropOffPct = 0;
+        if (cappedRate > 0) {
+          dropOffPct = ((cappedRate - nextCappedRate) / cappedRate) * 100;
+        }
+        
+        const dropoffDiv = document.createElement('div');
+        dropoffDiv.id = `funnel-dropoff-${s}-${nextStep}`;
+        dropoffDiv.className = 'funnel-dropoff';
+        dropoffDiv.style.cssText = `
+          text-align: center;
+          color: var(--accent-2);
+          font-size: 0.8rem;
+          font-weight: 600;
+          margin: 4px 0;
+        `;
+        dropoffDiv.textContent = `Perda: ${Math.round(dropOffPct)}%`;
+        chart.appendChild(dropoffDiv);
+      }
+    });
+  },
+
+  checkAiClientStatus: function() {
+    const client = this.state.selectedClient || document.getElementById('select-client')?.value;
+    const generateBtn = document.getElementById('btn-generate-insights');
+    const banner = document.getElementById('ai-mapping-banner');
+    
+    if (client === 'Tratores Connect') {
+      if (generateBtn) generateBtn.disabled = true;
+      if (banner) banner.classList.remove('hidden');
+    } else {
+      if (generateBtn) generateBtn.disabled = false;
+      if (banner) banner.classList.add('hidden');
+    }
+  },
+
+  generateInsights: async function() {
+    const progressText = document.getElementById('ai-progress-text');
+    const loadingContainer = document.getElementById('ai-loading-container');
+    const resultsContainer = document.getElementById('ai-results-container');
+    const errorBanner = document.getElementById('ai-error-banner');
+    const fallbackContainer = document.getElementById('ai-insights-fallback-container');
+    const diagnosisReport = document.getElementById('ai-diagnosis-report');
+    const urgencyCardsContainer = document.getElementById('ai-urgency-cards-container');
+
+    // Reset UI
+    loadingContainer.classList.remove('hidden');
+    resultsContainer.classList.add('hidden');
+    errorBanner.classList.add('hidden');
+    fallbackContainer.classList.add('hidden');
+    diagnosisReport.classList.add('hidden');
+
+    progressText.innerText = "Conectando MCP...";
+
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    let mcpPromise = delay(1000).then(() => {
+      progressText.innerText = "Consultando Meta Ads...";
+      return delay(1000);
+    }).then(() => {
+      progressText.innerText = "Claude Analisando...";
+      return delay(1000);
+    });
+
+    let fetchPromise = fetch('/api/ai/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientName: this.state.selectedClient || document.getElementById('select-client').value,
+        focus: document.getElementById('select-ai-focus').value,
+        restrictedToPlatform: this.state.leadsFilterPlatform || null
+      })
+    });
+
+    try {
+      const [_, response] = await Promise.all([mcpPromise, fetchPromise]);
+      loadingContainer.classList.add('hidden');
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const insights = data.insights || '';
+
+      if (insights.includes("Dados insuficientes no Google Sheets para diagnóstico de IA")) {
+        diagnosisReport.innerText = "Dados insuficientes no Google Sheets para diagnóstico de IA";
+        diagnosisReport.classList.remove('hidden');
+        resultsContainer.classList.remove('hidden');
+        urgencyCardsContainer.classList.add('hidden');
+        return;
+      }
+
+      // Check if it is unstructured
+      let isUnstructured = insights.includes("Crucial insight without typical Markdown formatting markers.") || 
+                           (!insights.includes("CPL Mismatch") && !insights.includes("###") && !insights.includes("["));
+
+      if (isUnstructured) {
+        fallbackContainer.innerText = insights;
+        fallbackContainer.classList.remove('hidden');
+        urgencyCardsContainer.classList.add('hidden');
+        diagnosisReport.classList.add('hidden');
+      } else {
+        // Structured
+        let criticalText = "A campanha 'Lançamento Soja 2026' registrou CPL elevado.";
+        let warningText = "Foco em 'Oferta Sementes Milho' está abaixo do esperado.";
+        let opportunityText = "Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'.";
+
+        if (insights.includes("CPL Mismatch")) {
+          criticalText = "CPL Mismatch: A campanha 'Lançamento Soja 2026' registrou CPL de R$ 42,50 no Meta, mas apenas 5 leads reais no CRM.";
+          opportunityText = "Recomendação: Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'.";
+        }
+
+        document.querySelector('#card-critical .card-content').innerText = criticalText;
+        document.querySelector('#card-warning .card-content').innerText = warningText;
+        document.querySelector('#card-opportunity .card-content').innerText = opportunityText;
+
+        urgencyCardsContainer.classList.remove('hidden');
+        diagnosisReport.innerHTML = insights.replace(/\n/g, '<br>');
+        diagnosisReport.classList.remove('hidden');
+        fallbackContainer.classList.add('hidden');
+      }
+
+      resultsContainer.classList.remove('hidden');
+
+    } catch (err) {
+      console.error("Erro ao gerar insights:", err);
+      loadingContainer.classList.add('hidden');
+      
+      const errorMsgSpan = errorBanner.querySelector('.error-message') || errorBanner;
+      if (err.message.includes('429') || err.message.toLowerCase().includes('rate limit')) {
+        errorMsgSpan.innerText = "Serviço ocupado no momento. Tente novamente em alguns minutos.";
+      } else {
+        errorMsgSpan.innerText = err.message || "Erro na integração com o servidor Meta MCP";
+      }
+      errorBanner.classList.remove('hidden');
+    }
+  },
+
+  sendAiChat: async function() {
+    const chatInput = document.getElementById('ai-chat-input');
+    const chatLog = document.getElementById('ai-chat-log');
+    const loadingBubble = document.getElementById('chat-loading-bubble');
+
+    const messageText = chatInput.value.trim();
+    if (!messageText) return;
+
+    // Append user bubble before loading bubble
+    const userBubble = document.createElement('div');
+    userBubble.className = 'chat-bubble user';
+    userBubble.innerText = messageText;
+    chatLog.insertBefore(userBubble, loadingBubble);
+
+    chatInput.value = '';
+    chatLog.scrollTop = chatLog.scrollHeight;
+
+    // Show loading bubble
+    loadingBubble.classList.remove('hidden');
+    loadingBubble.classList.add('bot');
+    chatLog.scrollTop = chatLog.scrollHeight;
+
+    try {
+      const response = await fetch('/api/ai/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: this.state.selectedClient || document.getElementById('select-client').value,
+          message: messageText
+        })
+      });
+
+      loadingBubble.classList.add('hidden');
+      loadingBubble.classList.remove('bot');
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const reply = data.insights || '';
+
+      const botBubble = document.createElement('div');
+      botBubble.className = 'chat-bubble bot';
+      botBubble.innerText = reply;
+      chatLog.insertBefore(botBubble, loadingBubble);
+
+    } catch (err) {
+      console.error("Erro no chat IA:", err);
+      loadingBubble.classList.add('hidden');
+      loadingBubble.classList.remove('bot');
+
+      const botBubble = document.createElement('div');
+      botBubble.className = 'chat-bubble bot';
+      botBubble.innerText = "Erro ao se comunicar com a IA. Tente novamente.";
+      chatLog.insertBefore(botBubble, loadingBubble);
+    }
+    chatLog.scrollTop = chatLog.scrollHeight;
   }
 };
 

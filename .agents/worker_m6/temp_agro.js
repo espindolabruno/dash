@@ -1,0 +1,2424 @@
+
+    const { useState, useEffect, useMemo } = React;
+    const { 
+      BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+      ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell 
+    } = Recharts;
+
+    // Configurações de cores exatas de example.txt
+    const COLORS = {
+      bg: '#12201A', 
+      surface: '#1B2B22', 
+      surfaceHi: '#24382C',
+      border: 'rgba(243,241,231,0.10)', 
+      borderStrong: 'rgba(243,241,231,0.18)',
+      text: '#F3F1E7', 
+      textSoft: '#AFBBAA', 
+      textFaint: '#7C8C7C',
+      gold: '#D8A73D', 
+      goldText: '#4A3410',
+      teal: '#4F8F73', 
+      tealText: '#0F241A',
+      slate: '#6E86A8', 
+      slateText: '#0E1B2A',
+      rust: '#C1633C', 
+      rustText: '#3A1508',
+    };
+
+    const STATUS_COLOR = { 
+      'convertido': COLORS.gold, 
+      'lead qualificado': COLORS.teal, 
+      'lead': COLORS.slate, 
+      'sem interesse': COLORS.rust 
+    };
+    
+    const STATUS_LABEL = { 
+      'convertido': 'Convertido', 
+      'lead qualificado': 'Qualificado', 
+      'lead': 'Lead', 
+      'sem interesse': 'Sem interesse' 
+    };
+    
+    const PLATFORM_LABEL = { 
+      instagram: 'Instagram', 
+      facebook: 'Facebook' 
+    };
+    
+    const DAY_ORDER = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+    const PERIOD_ORDER = ['Madrugada','Manhã','Tarde','Noite'];
+
+    function periodOf(hora) {
+      if (hora >= 0 && hora < 6) return 'Madrugada';
+      if (hora >= 6 && hora < 12) return 'Manhã';
+      if (hora >= 12 && hora < 18) return 'Tarde';
+      return 'Noite';
+    }
+
+    function fmtBRL(v) {
+      return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+    }
+    
+    function fmtNum(v) {
+      return v.toLocaleString('pt-BR');
+    }
+    
+    function fmtPct(v) {
+      return v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+    }
+
+    // Função de extração de dia da semana
+    function getDiaSemana(dateStr) {
+      if (!dateStr) return 'Seg';
+      const parts = dateStr.split(' ')[0].split('-');
+      if (parts.length < 3) return 'Seg';
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      const d = new Date(year, month, day);
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      // Mapeia para corresponder a DAY_ORDER
+      return days[d.getDay()];
+    }
+
+    // Função de cálculo de semana do ano ISO
+    function getISOWeek(dateStr) {
+      if (!dateStr) return '';
+      const parts = dateStr.split(' ')[0].split('-');
+      if (parts.length < 3) return '';
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      const d = new Date(year, month, day);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+      const week1 = new Date(d.getFullYear(), 0, 4);
+      const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+      return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    }
+
+    // Componente customizado para mapear Lucide Icons para classes do FontAwesome
+    function Icon({ name, size = 16, color }) {
+      const map = {
+        Users: 'fa-users',
+        Target: 'fa-bullseye',
+        TrendingUp: 'fa-arrow-trend-up',
+        DollarSign: 'fa-dollar-sign',
+        Smartphone: 'fa-mobile-screen-button',
+        RotateCcw: 'fa-arrow-rotate-left',
+        ImageOff: 'fa-image-slash',
+        ArrowUpRight: 'fa-arrow-up-right',
+        ArrowDownRight: 'fa-arrow-down',
+        Sparkles: 'fa-wand-magic-sparkles'
+      };
+      const cls = map[name] || 'fa-question';
+      return <i className={`fa-solid ${cls}`} style={{ fontSize: size, color }} />;
+    }
+
+    // Wrappers de ícones
+    const Users = (props) => <Icon name="Users" {...props} />;
+    const Target = (props) => <Icon name="Target" {...props} />;
+    const DollarSign = (props) => <Icon name="DollarSign" {...props} />;
+    const TrendingUp = (props) => <Icon name="TrendingUp" {...props} />;
+    const Smartphone = (props) => <Icon name="Smartphone" {...props} />;
+    const RotateCcw = (props) => <Icon name="RotateCcw" {...props} />;
+    const ImageOff = (props) => <Icon name="ImageOff" {...props} />;
+    const ArrowUpRight = (props) => <Icon name="ArrowUpRight" {...props} />;
+    const ArrowDownRight = (props) => <Icon name="ArrowDownRight" {...props} />;
+    const Sparkles = (props) => <Icon name="Sparkles" {...props} />;
+
+    // Componentes de Layout exatamente como em example.txt
+    function Chip({ active, onClick, children, color }) {
+      return (
+        <button onClick={onClick} style={{
+          padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontFamily: 'var(--font-body)',
+          border: `1px solid ${active ? (color || COLORS.gold) : COLORS.border}`,
+          background: active ? (color || COLORS.gold) : 'transparent',
+          color: active ? COLORS.bg : COLORS.textSoft,
+          cursor: 'pointer', transition: 'all .15s', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap'
+        }}>{children}</button>
+      );
+    }
+
+    function Card({ children, style }) {
+      return (
+        <div style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14,
+          padding: 18, ...style
+        }}>{children}</div>
+      );
+    }
+
+    // Adaptador de ícone para KPI de example.txt
+    function KPI({ icon: IconComponent, label, value, sub, accent }) {
+      return (
+        <Card style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: accent, opacity: 0.08 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <IconComponent size={15} color={accent} />
+            </div>
+            <span style={{ fontSize: 12, color: COLORS.textSoft, fontFamily: 'var(--font-body)' }}>{label}</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 600, color: COLORS.text, letterSpacing: -0.5 }}>{value}</div>
+          {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 4, fontFamily: 'var(--font-body)' }}>{sub}</div>}
+        </Card>
+      );
+    }
+
+    function SectionTitle({ eyebrow, title, sub }) {
+      return (
+        <div style={{ marginBottom: 14 }}>
+          {eyebrow && <div style={{ fontSize: 11, color: COLORS.gold, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{eyebrow}</div>}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: COLORS.text }}>{title}</div>
+          {sub && <div style={{ fontSize: 12.5, color: COLORS.textFaint, marginTop: 2 }}>{sub}</div>}
+        </div>
+      );
+    }
+
+    function CustomTooltip({ active, payload, label }) {
+      if (!active || !payload || !payload.length) return null;
+      return (
+        <div style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.borderStrong}`, borderRadius: 10, padding: '8px 12px', fontSize: 12.5 }}>
+          <div style={{ color: COLORS.textSoft, marginBottom: 4, fontFamily: 'var(--font-body)' }}>{label}</div>
+          {payload.map((p, i) => (
+            <div key={i} style={{ color: p.color || COLORS.text, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+              {p.name}: {typeof p.value === 'number' ? (p.name.includes('Receita') || p.name.includes('Investimento') ? fmtBRL(p.value) : fmtNum(p.value)) : p.value}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Componente Principal
+    function Dashboard() {
+      // Estado de autenticação e carregamento
+      const [isDemoMode, setIsDemoMode] = useState(false);
+      const [clients, setClients] = useState([]);
+      const [selectedClient, setSelectedClient] = useState('');
+      const [selectedClientId, setSelectedClientId] = useState('');
+      const [leads, setLeads] = useState([]);
+      const [metaData, setMetaData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      // Estado dos filtros de example.txt
+      const [platforms, setPlatforms] = useState([]);
+      const [devices, setDevices] = useState([]);
+      const [statuses, setStatuses] = useState([]);
+      const [months, setMonths] = useState([]);
+      const [sortKey, setSortKey] = useState('leads');
+
+      // Estados do controle de período
+      const [startDate, setStartDate] = useState(() => {
+        const start = new Date();
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        return start;
+      });
+      const [endDate, setEndDate] = useState(() => {
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        return end;
+      });
+      const [dateFilter, setDateFilter] = useState('7');
+      const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+      const [customStartDate, setCustomStartDate] = useState('');
+      const [customEndDate, setCustomEndDate] = useState('');
+
+      // Estado de conexões e modais (Google e Meta)
+      const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+      const [settingsTab, setSettingsTab] = useState('status'); // 'status' (Google) ou 'meta'
+      const [googleConnected, setGoogleConnected] = useState(false);
+      const [checkingGoogle, setCheckingGoogle] = useState(false);
+      
+      const [metaAccounts, setMetaAccounts] = useState([]);
+      const [filteredMetaAccounts, setFilteredMetaAccounts] = useState([]);
+      const [loadingMetaAccounts, setLoadingMetaAccounts] = useState(false);
+      const [searchMetaQuery, setSearchMetaQuery] = useState('');
+      const [savingMapping, setSavingMapping] = useState(false);
+      const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+      // Informações da conta vinculada atualmente
+      const [mappedMetaAccountId, setMappedMetaAccountId] = useState(null);
+      const [mappedMetaAccountName, setMappedMetaAccountName] = useState(null);
+      const [mappedInstagramUsername, setMappedInstagramUsername] = useState(null);
+
+      const [activeView, setActiveView] = useState('view-geral');
+      const [selectedMetaCampaignId, setSelectedMetaCampaignId] = useState(null);
+      const [selectedMetaAdsetId, setSelectedMetaAdsetId] = useState(null);
+      const [selectedMetaAdId, setSelectedMetaAdId] = useState(null);
+      const [explorerLevel, setExplorerLevel] = useState('campaign');
+      const [explorerSearch, setExplorerSearch] = useState('');
+      const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
+        const saved = localStorage.getItem('sidebar_expanded');
+        return saved !== null ? saved === 'true' : window.innerWidth > 768;
+      });
+
+      // Milestone 4 States & Functions
+      const [leadsSearchQuery, setLeadsSearchQuery] = useState('');
+      const [leadsCurrentPage, setLeadsCurrentPage] = useState(1);
+      const [leadsSortDirection, setLeadsSortDirection] = useState('desc');
+      const [lightboxImage, setLightboxImage] = useState(null);
+
+      const [pixelId, setPixelId] = useState('');
+      const [pixelIdInput, setPixelIdInput] = useState('');
+      const [pixelIdError, setPixelIdError] = useState('');
+      const [pixelToastMessage, setPixelToastMessage] = useState('');
+      const [pixelData, setPixelData] = useState(null);
+      const [pixelLoading, setPixelLoading] = useState(false);
+      const [pixelApiError, setPixelApiError] = useState('');
+
+      // Milestone 5 States
+      const [aiFocus, setAiFocus] = useState('cpl');
+      const [aiLoading, setAiLoading] = useState(false);
+      const [aiProgressText, setAiProgressText] = useState('');
+      const [aiInsights, setAiInsights] = useState(null);
+      const [aiError, setAiError] = useState('');
+      const [aiChatLog, setAiChatLog] = useState([
+        { role: 'bot', text: 'Olá! Como posso ajudar você a otimizar suas campanhas hoje?' }
+      ]);
+      const [aiChatInput, setAiChatInput] = useState('');
+      const [chatLoading, setChatLoading] = useState(false);
+
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+      const generateAiInsights = async () => {
+        setAiLoading(true);
+        setAiInsights(null);
+        setAiError('');
+        setAiProgressText('Conectando MCP...');
+
+        let mcpPromise = delay(1000).then(() => {
+          setAiProgressText('Consultando Meta Ads...');
+          return delay(1000);
+        }).then(() => {
+          setAiProgressText('Claude Analisando...');
+          return delay(1000);
+        });
+
+        let fetchPromise = fetch('/api/ai/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: selectedClient,
+            focus: aiFocus
+          })
+        });
+
+        try {
+          const [_, response] = await Promise.all([mcpPromise, fetchPromise]);
+          setAiLoading(false);
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          setAiInsights(data.insights || '');
+        } catch (err) {
+          console.error(err);
+          setAiLoading(false);
+          if (err.message.includes('429') || err.message.toLowerCase().includes('rate limit')) {
+            setAiError("Serviço ocupado no momento. Tente novamente em alguns minutos.");
+          } else {
+            setAiError(err.message || "Erro na integração com o servidor Meta MCP");
+          }
+        }
+      };
+
+      const sendAiChatMessage = async () => {
+        const messageText = aiChatInput.trim();
+        if (!messageText) return;
+
+        setAiChatLog(prev => [...prev, { role: 'user', text: messageText }]);
+        setAiChatInput('');
+        setChatLoading(true);
+
+        try {
+          const response = await fetch('/api/ai/insights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientName: selectedClient,
+              message: messageText
+            })
+          });
+
+          setChatLoading(false);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          setAiChatLog(prev => [...prev, { role: 'bot', text: data.insights || '' }]);
+        } catch (err) {
+          console.error(err);
+          setChatLoading(false);
+          setAiChatLog(prev => [...prev, { role: 'bot', text: "Erro ao se comunicar com a IA. Tente novamente." }]);
+        }
+      };
+
+      const loadPixelEvents = async (pid = pixelId) => {
+        if (!pid) return;
+        setPixelLoading(true);
+        setPixelApiError('');
+        try {
+          const formatDateStr = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          let startStr, endStr;
+          if (startDate && endDate) {
+            startStr = formatDateStr(startDate);
+            endStr = formatDateStr(endDate);
+          } else {
+            const now = new Date();
+            const start = new Date();
+            start.setDate(now.getDate() - 30);
+            startStr = formatDateStr(start);
+            endStr = formatDateStr(now);
+          }
+          const res = await fetch(`/api/pixel-events?pixelId=${pid}&startDate=${startStr}&endDate=${endStr}&demo=${isDemoMode}`);
+          if (res.ok) {
+            const data = await res.json();
+            setPixelData(data);
+          } else {
+            const data = await res.json().catch(() => ({}));
+            setPixelApiError(data.error || 'Erro desconhecido.');
+            setPixelData(null);
+          }
+        } catch (e) {
+          setPixelApiError('Tempo limite esgotado. Verifique a conexão com a Meta API');
+          setPixelData(null);
+        } finally {
+          setPixelLoading(false);
+        }
+      };
+
+      const clearPixelEvents = () => {
+        setPixelData(null);
+        setPixelApiError('');
+      };
+
+      // Funções auxiliares para formatação de data
+      const formatDateShort = (date) => {
+        if (!date) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        return `${day}/${month}`;
+      };
+
+      const formatDateFull = (date) => {
+        if (!date) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      // Atualiza o range de data com base no filtro selecionado
+      const updateDateRange = (type, customStart = null, customEnd = null) => {
+        const startOfDay = (d) => {
+          const nd = new Date(d);
+          nd.setHours(0, 0, 0, 0);
+          return nd;
+        };
+        const endOfDay = (d) => {
+          const nd = new Date(d);
+          nd.setHours(23, 59, 59, 999);
+          return nd;
+        };
+
+        setDateFilter(type);
+        const now = new Date();
+
+        if (type === 'today') {
+          setStartDate(startOfDay(now));
+          setEndDate(endOfDay(now));
+        } else if (type === 'yesterday') {
+          const yesterday = new Date();
+          yesterday.setDate(now.getDate() - 1);
+          setStartDate(startOfDay(yesterday));
+          setEndDate(endOfDay(yesterday));
+        } else if (type === 'hoje_ontem') {
+          const yesterday = new Date();
+          yesterday.setDate(now.getDate() - 1);
+          setStartDate(startOfDay(yesterday));
+          setEndDate(endOfDay(now));
+        } else if (type === '3') {
+          const start = new Date();
+          start.setDate(now.getDate() - 2);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === '7') {
+          const start = new Date();
+          start.setDate(now.getDate() - 6);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === '15') {
+          const start = new Date();
+          start.setDate(now.getDate() - 14);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === 'ultimo_mes') {
+          const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const end = new Date(now.getFullYear(), now.getMonth(), 0);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(end));
+        } else if (type === 'mes_atual') {
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          setStartDate(startOfDay(start));
+          setEndDate(endOfDay(now));
+        } else if (type === 'custom') {
+          if (customStart && customEnd) {
+            setStartDate(startOfDay(new Date(customStart + 'T00:00:00')));
+            setEndDate(endOfDay(new Date(customEnd + 'T23:59:59')));
+          }
+        }
+      };
+
+      // Desloca o range de data atual para frente ou para trás
+      const shiftDateRange = (direction) => {
+        if (!startDate || !endDate) return;
+
+        const sY = startDate.getFullYear();
+        const sM = startDate.getMonth();
+        const sD = startDate.getDate();
+        const eY = endDate.getFullYear();
+        const eM = endDate.getMonth();
+        const eD = endDate.getDate();
+        const sDateOnly = new Date(sY, sM, sD);
+        const eDateOnly = new Date(eY, eM, eD);
+        
+        const diffDays = Math.round((eDateOnly - sDateOnly) / (1000 * 60 * 60 * 24)) + 1;
+        
+        let newStart = new Date(startDate);
+        let newEnd = new Date(endDate);
+
+        const isCalendarMonth = sD === 1 && eD === new Date(eY, eM + 1, 0).getDate();
+
+        if (isCalendarMonth) {
+          if (direction === 'prev') {
+            newStart = new Date(sY, sM - 1, 1);
+            newEnd = new Date(sY, sM, 0);
+          } else {
+            newStart = new Date(sY, sM + 1, 1);
+            newEnd = new Date(sY, sM + 2, 0);
+          }
+        } else {
+          if (direction === 'prev') {
+            newStart.setDate(newStart.getDate() - diffDays);
+            newEnd.setDate(newEnd.getDate() - diffDays);
+          } else {
+            newStart.setDate(newStart.getDate() + diffDays);
+            newEnd.setDate(newEnd.getDate() + diffDays);
+          }
+        }
+
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (newEnd > today) {
+          return;
+        }
+
+        setStartDate(newStart);
+        setEndDate(newEnd);
+        setDateFilter('custom');
+      };
+
+      // Retorna a label textual para exibição no botão de trigger
+      const getDateDisplayLabel = () => {
+        if (!startDate || !endDate) return 'Todo Período';
+        
+        if (dateFilter === 'today') {
+          return `Hoje (${formatDateFull(startDate)})`;
+        }
+        if (dateFilter === 'yesterday') {
+          return `Ontem (${formatDateFull(startDate)})`;
+        }
+        if (dateFilter === 'hoje_ontem') {
+          return `Hoje e Ontem (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '3') {
+          return `Últimos 3 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '7') {
+          return `Últimos 7 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === '15') {
+          return `Últimos 15 dias (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === 'ultimo_mes') {
+          return `Último mês (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        if (dateFilter === 'mes_atual') {
+          return `Mês atual (${formatDateShort(startDate)} - ${formatDateShort(endDate)})`;
+        }
+        
+        return `${formatDateFull(startDate)} - ${formatDateFull(endDate)}`;
+      };
+
+      // Sincroniza inputs do form personalizado
+      useEffect(() => {
+        if (startDate) setCustomStartDate(startDate.toISOString().substring(0, 10));
+        if (endDate) setCustomEndDate(endDate.toISOString().substring(0, 10));
+      }, [startDate, endDate]);
+
+      // Fecha dropdown de datas ao clicar fora
+      useEffect(() => {
+        const handleOutsideClick = (event) => {
+          const trigger = document.getElementById('date-picker-trigger');
+          const dropdown = document.getElementById('date-picker-dropdown');
+          if (trigger && dropdown && !trigger.contains(event.target) && !dropdown.contains(event.target)) {
+            setIsDatePickerOpen(false);
+          }
+        };
+        document.addEventListener('click', handleOutsideClick);
+        return () => document.removeEventListener('click', handleOutsideClick);
+      }, []);
+
+      // Verifica status de conexão do Google Drive
+      const checkGoogleStatus = async () => {
+        setCheckingGoogle(true);
+        try {
+          const res = await fetch('/api/google/status');
+          if (res.ok) {
+            const data = await res.json();
+            setGoogleConnected(data.connected);
+          }
+        } catch (e) {
+          console.error("Erro ao verificar status do Google:", e);
+        } finally {
+          setCheckingGoogle(false);
+        }
+      };
+
+      // Busca contas de anúncios do Facebook para mapeamento
+      const fetchMetaAccounts = async (clientName) => {
+        if (!clientName) return;
+        setLoadingMetaAccounts(true);
+        try {
+          const res = await fetch(`/api/meta-accounts?clientName=${encodeURIComponent(clientName)}&demo=${isDemoMode}`);
+          if (res.ok) {
+            const data = await res.json();
+            setMetaAccounts(data);
+            setFilteredMetaAccounts(data);
+          } else {
+            setMetaAccounts([]);
+            setFilteredMetaAccounts([]);
+          }
+        } catch (e) {
+          console.error("Erro ao carregar contas do Meta:", e);
+          setMetaAccounts([]);
+          setFilteredMetaAccounts([]);
+        } finally {
+          setLoadingMetaAccounts(false);
+        }
+      };
+
+      // Salva vinculação de conta do Meta
+      const handleSaveMapping = async (account) => {
+        setSavingMapping(true);
+        try {
+          const res = await fetch('/api/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              drive_client_name: selectedClient,
+              meta_ad_account_id: account.id,
+              meta_ad_account_name: account.name,
+              instagram_username: account.instagram !== 'Não vinculado' ? account.instagram : ''
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              alert(`Conta vinculada com sucesso para o cliente '${selectedClient}'!`);
+              setRefreshTrigger(prev => prev + 1);
+            } else {
+              alert('Erro ao vincular conta: ' + (data.error || 'Erro desconhecido'));
+            }
+          } else {
+            alert('Erro de conexão com o servidor.');
+          }
+        } catch (e) {
+          alert('Erro ao salvar mapeamento: ' + e.message);
+        } finally {
+          setSavingMapping(false);
+          setIsSettingsOpen(false);
+        }
+      };
+
+      // Filtro dinâmico das contas do Facebook no modal
+      useEffect(() => {
+        if (!searchMetaQuery) {
+          setFilteredMetaAccounts(metaAccounts);
+        } else {
+          const q = searchMetaQuery.toLowerCase();
+          setFilteredMetaAccounts(
+            metaAccounts.filter(acc => 
+              (acc.name || '').toLowerCase().includes(q) || 
+              (acc.id || '').includes(q) || 
+              (acc.instagram || '').toLowerCase().includes(q)
+            )
+          );
+        }
+      }, [searchMetaQuery, metaAccounts]);
+
+      // Verifica status ao abrir aba correspondente
+      useEffect(() => {
+        if (isSettingsOpen) {
+          if (settingsTab === 'status') {
+            checkGoogleStatus();
+          } else if (settingsTab === 'meta') {
+            fetchMetaAccounts(selectedClient);
+          }
+        }
+      }, [isSettingsOpen, settingsTab, selectedClient]);
+
+      // Verifica autenticação e carrega os clientes iniciais (e trata callbacks OAuth)
+      useEffect(() => {
+        const sessionToken = sessionStorage.getItem('session_token');
+        const demoParam = new URLSearchParams(window.location.search).get('demo') === 'true';
+        const isDemo = demoParam || sessionStorage.getItem('is_demo_mode') === 'true';
+        
+        setIsDemoMode(isDemo);
+
+        if (!sessionToken && !isDemo) {
+          window.location.href = '/index.html';
+          return;
+        }
+
+        async function fetchClients() {
+          try {
+            setLoading(true);
+            const res = await fetch(`/api/clients?demo=${isDemo}`);
+            if (!res.ok) throw new Error('Erro ao buscar lista de clientes.');
+            const data = await res.json();
+            setClients(data);
+            
+            // Capturar retornos de callbacks OAuth
+            const urlParams = new URLSearchParams(window.location.search);
+            const googleStatus = urlParams.get('google_status');
+            const googleError = urlParams.get('google_error');
+            const metaStatus = urlParams.get('meta_status');
+            const metaError = urlParams.get('meta_error');
+            const metaClient = urlParams.get('clientName');
+
+            let clientToSelect = '';
+            let clientIdToSelect = '';
+
+            if (metaStatus === 'success' && metaClient) {
+              const matched = data.find(c => c.name === metaClient);
+              if (matched) {
+                clientToSelect = matched.name;
+                clientIdToSelect = matched.id;
+              }
+              alert(`Facebook conectado com sucesso para o cliente '${metaClient}'!`);
+              setIsSettingsOpen(true);
+              setSettingsTab('meta');
+            } else if (googleStatus) {
+              alert('Google Drive conectado com sucesso!');
+              setIsSettingsOpen(true);
+              setSettingsTab('status');
+            } else if (googleError) {
+              alert(`Falha ao conectar com o Google Drive: ${googleError}`);
+            } else if (metaError) {
+              alert(`Falha ao conectar com o Facebook: ${metaError}`);
+            }
+
+            if (!clientToSelect && data.length > 0) {
+              clientToSelect = data[0].name;
+              clientIdToSelect = data[0].id;
+            }
+
+            if (clientToSelect) {
+              setSelectedClient(clientToSelect);
+              setSelectedClientId(clientIdToSelect);
+            } else {
+              setLoading(false);
+            }
+
+            if (googleStatus || googleError || metaStatus || metaError) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          } catch (err) {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
+        
+        fetchClients();
+      }, []);
+
+      // 1. Carrega os leads (planilha) do cliente selecionado
+      useEffect(() => {
+        if (!selectedClient) return;
+
+        async function fetchClientLeads() {
+          try {
+            setLoading(true);
+            setError(null);
+            
+            // Carregar leads da planilha do Google Drive
+            const leadsUrl = `/api/leads?clientId=${selectedClientId}&clientName=${encodeURIComponent(selectedClient)}&demo=${isDemoMode}`;
+            const leadsRes = await fetch(leadsUrl);
+            if (!leadsRes.ok) throw new Error('Falha ao carregar leads do cliente.');
+            
+            const leadsData = await leadsRes.json();
+            
+            // Guardar informações de mapeamento Meta do cliente
+            setMappedMetaAccountId(leadsData.meta_ad_account_id);
+            setMappedMetaAccountName(leadsData.meta_ad_account_name);
+            setMappedInstagramUsername(leadsData.instagram_username);
+            
+            // Normalizar os leads retornados para o formato esperado pelo dashboard
+            const normalizedLeads = (leadsData.leads || []).map((l, index) => {
+              // Mapeamento inteligente de status
+              let statusMapped = 'desconhecido';
+              const phase = (l.phase || '').toLowerCase().trim();
+              if (phase === 'converteu' || phase === 'convertido' || phase === 'venda') {
+                statusMapped = 'convertido';
+              } else if (phase === 'cliente em potencial' || phase === 'proposta enviada' || phase === 'lead qualificado' || phase === 'em negociação' || phase === 'em negociacao') {
+                statusMapped = 'lead qualificado';
+              } else if (phase === 'lead') {
+                statusMapped = 'lead';
+              } else if (phase === 'perdido' || phase === 'sem interesse') {
+                statusMapped = 'sem interesse';
+              } else if (!phase) {
+                // Se estiver vazio, vamos manter como desconhecido para não contabilizar no funil de Leads Reais caso não seja.
+                statusMapped = 'desconhecido';
+              } else {
+                statusMapped = 'desconhecido';
+              }
+
+              // Mapeamento de plataforma
+              const plat = (l.platform || '').toLowerCase().trim();
+              const isInstagram = plat.includes('instagram') || plat.includes('ig');
+              const isFacebook = plat.includes('facebook') || plat.includes('fb');
+              const platformMapped = isInstagram ? 'instagram' : (isFacebook ? 'facebook' : 'facebook');
+
+              // Mapeamento de dispositivo
+              const dev = (l.device || '').toLowerCase().trim();
+              const isIos = dev.includes('ios') || dev.includes('iphone') || dev.includes('apple');
+              const deviceMapped = isIos ? 'ios' : 'android';
+
+              // Função interna segura de parsing
+              const parseDateSafe = (dateStr) => {
+                if (!dateStr) return null;
+                const parts = dateStr.split(' ')[0].split('-');
+                if (parts.length < 3) return null;
+                return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+              };
+
+              return {
+                id: index + 1,
+                name: l.name || '',
+                phone: l.phone || '',
+                date: l.date || '',
+                mock_type: l.mock_type || '',
+                data_dt: l.date || '',
+                _parsedDate: parseDateSafe(l.date),
+                mes: l.date ? l.date.substring(0, 7) : '',
+                semana: getISOWeek(l.date),
+                dia_semana: getDiaSemana(l.date),
+                hora: l.date ? parseInt(l.date.substring(11, 13)) || 0 : 0,
+                dispositivo: deviceMapped,
+                plataforma: platformMapped,
+                criativo: l.creative || 'Anúncio sem Título',
+                anuncio_curto: l.copy || 'Sem Descrição',
+                thumb: l.anuncio_preview || '',
+                status: statusMapped,
+                valor: parseFloat(l.estimated_value) || 0.0
+              };
+            });
+
+            setLeads(normalizedLeads);
+
+            // Reseta filtros ao trocar de cliente
+            setPlatforms([]);
+            setDevices([]);
+            setStatuses([]);
+            setMonths([]);
+
+            setLoading(false);
+          } catch (err) {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
+
+        fetchClientLeads();
+      }, [selectedClient, selectedClientId, isDemoMode, refreshTrigger]);
+
+      // 2. Carrega os dados de campanhas do Meta Ads de forma dinâmica conforme o período selecionado
+      useEffect(() => {
+        if (!selectedClient) return;
+
+        async function fetchMetaInsights() {
+          const accountId = mappedMetaAccountId || (isDemoMode ? 'act_77728399102' : null);
+          if (!accountId) {
+            setMetaData(null);
+            return;
+          }
+
+          try {
+            let metaUrl = `/api/meta-insights?accountId=${accountId}&demo=${isDemoMode}&clientName=${encodeURIComponent(selectedClient)}`;
+            if (startDate && endDate) {
+              const formatDateStr = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+              };
+              metaUrl += `&startDate=${formatDateStr(startDate)}&endDate=${formatDateStr(endDate)}`;
+            } else {
+              metaUrl += `&days=90`;
+            }
+
+            const metaRes = await fetch(metaUrl);
+            if (metaRes.ok) {
+              const metaDataRes = await metaRes.json();
+              setMetaData(metaDataRes);
+            } else {
+              setMetaData(null);
+            }
+          } catch (e) {
+            console.error("Erro ao buscar campanhas Meta Ads:", e);
+            setMetaData(null);
+          }
+        }
+
+        fetchMetaInsights();
+      }, [selectedClient, mappedMetaAccountId, startDate, endDate, isDemoMode, refreshTrigger]);
+
+      // Mês selectors baseados no leads carregado
+      const allMonths = useMemo(() => [...new Set(leads.map(l => l.mes))].filter(Boolean).sort(), [leads]);
+
+      function toggle(list, setList, val) {
+        setList(list.includes(val) ? list.filter(x => x !== val) : [...list, val]);
+      }
+
+      // Filtro dos dados de leads em memória
+      const filtered = useMemo(() => leads.filter(l => {
+        // Filtro de período por data
+        if (startDate && endDate) {
+          if (!l._parsedDate || l._parsedDate < startDate || l._parsedDate > endDate) {
+            return false;
+          }
+        }
+        if (leadsSearchQuery) {
+          const q = leadsSearchQuery.toLowerCase();
+          const matchesSearch = 
+            (l.name && l.name.toLowerCase().includes(q)) ||
+            (l.phone && l.phone.includes(q)) ||
+            (l.plataforma && l.plataforma.toLowerCase().includes(q)) ||
+            (l.dispositivo && l.dispositivo.toLowerCase().includes(q)) ||
+            (l.status && l.status.toLowerCase().includes(q));
+          if (!matchesSearch) return false;
+        }
+        return (
+          (platforms.length === 0 || platforms.includes(l.plataforma)) &&
+          (devices.length === 0 || devices.includes(l.dispositivo)) &&
+          (statuses.length === 0 || statuses.includes(l.status)) &&
+          (months.length === 0 || months.includes(l.mes))
+        );
+      }), [leads, platforms, devices, statuses, months, startDate, endDate, leadsSearchQuery]);
+
+      const sortedLeads = useMemo(() => {
+        const arr = [...filtered];
+        const isAsc = leadsSortDirection === 'asc';
+        arr.sort((a, b) => {
+          const da = new Date(a.date).getTime() || 0;
+          const db = new Date(b.date).getTime() || 0;
+          return isAsc ? da - db : db - da;
+        });
+        return arr;
+      }, [filtered, leadsSortDirection]);
+
+      const paginatedLeads = useMemo(() => {
+        const startIndex = (leadsCurrentPage - 1) * 10;
+        return sortedLeads.slice(startIndex, startIndex + 10);
+      }, [sortedLeads, leadsCurrentPage]);
+
+      const leadsTotalPages = useMemo(() => {
+        return Math.max(1, Math.ceil(sortedLeads.length / 10));
+      }, [sortedLeads]);
+
+      const chartData = useMemo(() => {
+        if (!pixelData || !pixelData.timeline) return [];
+        const grouped = {};
+        pixelData.timeline.forEach(item => {
+          const dateStr = item.timestamp.substring(0, 10);
+          if (!grouped[dateStr]) {
+            grouped[dateStr] = { date: dateStr, PageView: 0, Lead: 0, Purchase: 0 };
+          }
+          if (grouped[dateStr][item.event] !== undefined) {
+            grouped[dateStr][item.event]++;
+          }
+        });
+        return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+      }, [pixelData]);
+
+      const resetFilters = () => { 
+        setPlatforms([]); 
+        setDevices([]); 
+        setStatuses([]); 
+        setMonths([]); 
+      };
+      
+      const hasFilters = platforms.length || devices.length || statuses.length || months.length;
+
+      // KPIs
+      const kpis = useMemo(() => {
+        const total = filtered.length;
+        const convertidos = filtered.filter(l => l.status === 'convertido').length;
+        const qualificados = filtered.filter(l => l.status === 'lead qualificado').length;
+        const receita = filtered.filter(l => l.status === 'convertido').reduce((s, l) => s + l.valor, 0);
+        const ticket = convertidos > 0 ? receita / convertidos : 0;
+        const taxaConv = total > 0 ? (convertidos / total) * 100 : 0;
+        const taxaQual = total > 0 ? ((qualificados + convertidos) / total) * 100 : 0;
+        return { total, convertidos, qualificados, receita, ticket, taxaConv, taxaQual };
+      }, [filtered]);
+
+      // Funil completo
+      const funnel = useMemo(() => {
+        let metaClicks = 0;
+        let isMetaLinked = !!mappedMetaAccountId || isDemoMode;
+        if (isMetaLinked && metaData && metaData.campaigns) {
+          metaData.campaigns.forEach(c => {
+            metaClicks += parseInt(c.conversas || 0);
+          });
+        }
+
+        const totalContatos = filtered.length;
+        const totalLeads = filtered.filter(l => l.status === 'lead' || l.status === 'lead qualificado' || l.status === 'convertido').length;
+        const totalQualificados = filtered.filter(l => l.status === 'lead qualificado' || l.status === 'convertido').length;
+        const totalConvertidos = filtered.filter(l => l.status === 'convertido').length;
+
+        // Base de cálculo das porcentagens (100%): se temos cliques Meta, eles são 100%. Caso contrário, contatos na planilha são 100%.
+        const base = (isMetaLinked && metaClicks > 0) ? metaClicks : (totalContatos > 0 ? totalContatos : 1);
+
+        return [
+          { 
+            stage: 'Cliques no WhatsApp (Meta)', 
+            value: isMetaLinked ? metaClicks : null, 
+            pct: isMetaLinked && metaClicks > 0 ? (metaClicks / base) * 100 : 0 
+          },
+          { 
+            stage: 'Contatos na Planilha (Conversas)', 
+            value: totalContatos, 
+            pct: (totalContatos / base) * 100 
+          },
+          { 
+            stage: 'Leads Reais', 
+            value: totalLeads, 
+            pct: (totalLeads / base) * 100 
+          },
+          { 
+            stage: 'Leads Qualificados', 
+            value: totalQualificados, 
+            pct: (totalQualificados / base) * 100 
+          },
+          { 
+            stage: 'Conversões (Vendas)', 
+            value: totalConvertidos, 
+            pct: (totalConvertidos / base) * 100 
+          },
+        ];
+      }, [filtered, metaData, mappedMetaAccountId, isDemoMode]);
+
+      // Tendência por mês
+      const trend = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          if (!l.mes) return;
+          if (!map[l.mes]) map[l.mes] = { mes: l.mes, leads: 0, convertidos: 0 };
+          map[l.mes].leads++;
+          if (l.status === 'convertido') map[l.mes].convertidos++;
+        });
+        return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
+      }, [filtered]);
+
+      // Comparação por plataforma
+      const byPlatform = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.plataforma || 'outro';
+          if (!map[k]) map[k] = { name: PLATFORM_LABEL[k] || k, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        return Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0 }));
+      }, [filtered]);
+
+      // Comparação por dispositivo
+      const byDevice = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.dispositivo || 'outro';
+          if (!map[k]) map[k] = { name: k, value: 0 };
+          map[k].value++;
+        });
+        return Object.values(map);
+      }, [filtered]);
+
+      // Heatmap dia x período
+      const heatmap = useMemo(() => {
+        const grid = {};
+        DAY_ORDER.forEach(d => { grid[d] = {}; PERIOD_ORDER.forEach(p => grid[d][p] = 0); });
+        filtered.forEach(l => {
+          const p = periodOf(l.hora);
+          if (grid[l.dia_semana]) grid[l.dia_semana][p]++;
+        });
+        let max = 1;
+        Object.values(grid).forEach(row => Object.values(row).forEach(v => { if (v > max) max = v; }));
+        return { grid, max };
+      }, [filtered]);
+
+      // Classificação de campanhas
+      const campaigns = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.campanha_curta || 'Não Identificada';
+          if (!map[k]) map[k] = { name: k, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        let arr = Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0, ticket: d.convertidos ? d.receita / d.convertidos : 0 }));
+        arr.sort((a, b) => b[sortKey] - a[sortKey]);
+        return arr;
+      }, [filtered, sortKey]);
+
+      // Classificação de criativos
+      const creatives = useMemo(() => {
+        const map = {};
+        filtered.forEach(l => {
+          const k = l.criativo + '|' + l.anuncio_curto;
+          if (!map[k]) map[k] = { titulo: l.criativo, anuncio: l.anuncio_curto, thumb: l.thumb, leads: 0, convertidos: 0, receita: 0 };
+          map[k].leads++;
+          if (l.status === 'convertido') { map[k].convertidos++; map[k].receita += l.valor; }
+        });
+        return Object.values(map).map(d => ({ ...d, taxa: d.leads ? (d.convertidos / d.leads) * 100 : 0 })).sort((a, b) => b.leads - a.leads).slice(0, 6);
+      }, [filtered]);
+
+      // Cálculo de dados de investimento reais/meta
+      const metaMetrics = useMemo(() => {
+        if (!metaData || !metaData.campaigns) return null;
+        let spend = 0;
+        let conversasMeta = 0;
+        metaData.campaigns.forEach(c => {
+          spend += parseFloat(c.spend || 0);
+          conversasMeta += parseInt(c.conversas || 0);
+        });
+        const cpl = kpis.total > 0 ? spend / kpis.total : 0;
+        const roas = spend > 0 ? kpis.receita / spend : 0;
+        const cpc = conversasMeta > 0 ? spend / conversasMeta : 0;
+        return { spend, cpl, roas, conversasMeta, cpc };
+      }, [metaData, kpis]);
+
+      // Insights automáticos de example.txt
+      const insights = useMemo(() => {
+        const out = [];
+        if (byPlatform.length === 2) {
+          const [a, b] = [...byPlatform].sort((x, y) => y.taxa - x.taxa);
+          if (a.leads >= 5 && b.leads >= 5 && a.taxa - b.taxa > 3) {
+            out.push(`${a.name} converte ${fmtPct(a.taxa - b.taxa)} a mais que ${b.name} (${fmtPct(a.taxa)} vs ${fmtPct(b.taxa)}).`);
+          }
+        }
+        if (trend.length >= 2) {
+          const best = [...trend].sort((a, b) => b.convertidos - a.convertidos)[0];
+          if (best && best.convertidos > 0) out.push(`${best.mes} foi o melhor mês em conversões, com ${fmtNum(best.convertidos)} vendas fechadas.`);
+        }
+        let bestCell = null;
+        Object.entries(heatmap.grid).forEach(([day, row]) => {
+          Object.entries(row).forEach(([period, val]) => {
+            if (!bestCell || val > bestCell.val) bestCell = { day, period, val };
+          });
+        });
+        if (bestCell && bestCell.val >= 4) out.push(`${bestCell.day} à ${bestCell.period.toLowerCase()} é o horário com mais leads (${fmtNum(bestCell.val)}).`);
+        if (campaigns.length > 0) {
+          const topCamp = [...campaigns].filter(c => c.leads >= 5).sort((a, b) => b.taxa - a.taxa)[0];
+          if (topCamp) out.push(`A campanha "${topCamp.name}" tem a maior taxa de conversão entre as relevantes (${fmtPct(topCamp.taxa)}).`);
+        }
+        if (byDevice.length === 2) {
+          const total = byDevice.reduce((s, d) => s + d.value, 0);
+          const android = byDevice.find(d => d.name === 'android');
+          if (android && total > 0) out.push(`${fmtPct((android.value / total) * 100)} dos leads chegam via Android — vale garantir que o checkout/WhatsApp abre bem nesse ambiente.`);
+        }
+        return out.slice(0, 4);
+      }, [byPlatform, trend, heatmap, campaigns, byDevice]);
+
+      const metaAuditMetrics = useMemo(() => {
+        if (!metaData) return { spend: 0, reach: 0, clicks: 0, conversas: 0, compras: 0, cpc: 0, crmLeads: 0, crmVendas: 0 };
+        let spend = 0, reach = 0, clicks = 0, conversas = 0, compras = 0;
+        let campaignsList = metaData.campaigns || [];
+        let adsetsList = metaData.adsets || [];
+        let creativesList = metaData.creatives || [];
+        if (selectedMetaCampaignId) {
+          adsetsList = adsetsList.filter(a => a.campaign_id === selectedMetaCampaignId);
+          creativesList = creativesList.filter(c => c.campaign_id === selectedMetaCampaignId);
+        }
+        if (selectedMetaAdsetId) {
+          creativesList = creativesList.filter(c => c.adset_id === selectedMetaAdsetId);
+        }
+        if (selectedMetaAdId) {
+          const adObj = (metaData.creatives || []).find(c => c.ad_id === selectedMetaAdId);
+          if (adObj) { spend = adObj.spend || 0; reach = adObj.reach || 0; clicks = adObj.clicks || 0; conversas = adObj.conversas || 0; compras = adObj.compras || 0; }
+        } else if (selectedMetaAdsetId) {
+          const adsetObj = (metaData.adsets || []).find(a => a.adset_id === selectedMetaAdsetId);
+          if (adsetObj) { spend = adsetObj.spend || 0; reach = adsetObj.reach || 0; clicks = adsetObj.clicks || 0; conversas = adsetObj.conversas || 0; compras = adsetObj.compras || 0; }
+        } else if (selectedMetaCampaignId) {
+          const campObj = (metaData.campaigns || []).find(c => c.campaign_id === selectedMetaCampaignId);
+          if (campObj) { spend = campObj.spend || 0; reach = campObj.reach || 0; clicks = campObj.clicks || 0; conversas = campObj.conversas || 0; compras = campObj.compras || 0; }
+        } else {
+          campaignsList.forEach(c => {
+            spend += c.spend || 0; reach += c.reach || 0; clicks += c.clicks || 0; conversas += c.conversas || 0; compras += c.compras || 0;
+          });
+        }
+        let activeCampaignName = null, activeAdsetName = null, activeAdName = null;
+        if (selectedMetaCampaignId && metaData) {
+          const cObj = (metaData.campaigns || []).find(c => c.campaign_id === selectedMetaCampaignId);
+          if (cObj) activeCampaignName = cObj.campaign_name.toLowerCase();
+        }
+        if (selectedMetaAdsetId && metaData) {
+          const aObj = (metaData.adsets || []).find(a => a.adset_id === selectedMetaAdsetId);
+          if (aObj) activeAdsetName = aObj.adset_name.toLowerCase();
+        }
+        if (selectedMetaAdId && metaData) {
+          const adObj = (metaData.creatives || []).find(c => c.ad_id === selectedMetaAdId);
+          if (adObj) activeAdName = adObj.ad_name.toLowerCase();
+        }
+        let crmLeads = filtered;
+        if (activeCampaignName) crmLeads = crmLeads.filter(l => l.campanha_curta && l.campanha_curta.toLowerCase() === activeCampaignName);
+        if (activeAdsetName) crmLeads = crmLeads.filter(l => l.adset && l.adset.toLowerCase() === activeAdsetName);
+        if (activeAdName) {
+          const cleanAdName = activeAdName.replace(/\s*\[v\d+\]$/, '');
+          crmLeads = crmLeads.filter(l => l.criativo && (l.criativo.toLowerCase() === activeAdName || l.criativo.toLowerCase() === cleanAdName));
+        }
+        const crmLeadsCount = crmLeads.length;
+        const crmVendasCount = crmLeads.filter(l => l.status === 'convertido').length;
+        const cpc = compras > 0 ? spend / compras : 0;
+        return { spend, reach, clicks, conversas, compras, cpc, crmLeads: crmLeadsCount, crmVendas: crmVendasCount };
+      }, [metaData, selectedMetaCampaignId, selectedMetaAdsetId, selectedMetaAdId, filtered]);
+
+      const explorerData = useMemo(() => {
+        if (!metaData) return [];
+        let data = [];
+        if (explorerLevel === 'campaign') data = metaData.campaigns || [];
+        else if (explorerLevel === 'adset') data = metaData.adsets || [];
+        else data = metaData.creatives || [];
+        if (explorerSearch) {
+          const q = explorerSearch.toLowerCase();
+          data = data.filter(d => (d.campaign_name || d.adset_name || d.ad_name || '').toLowerCase().includes(q));
+        }
+        return data;
+      }, [metaData, explorerLevel, explorerSearch]);
+
+      const handleLogout = () => {
+        sessionStorage.removeItem('session_token');
+        window.location.href = '/index.html';
+      };
+
+      if (loading && leads.length === 0) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16 }}>
+            <div style={{ width: 40, height: 40, border: '4px solid rgba(243,241,231,0.1)', borderTop: `4px solid ${COLORS.gold}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <div style={{ fontSize: 14, color: COLORS.textSoft, fontFamily: 'var(--font-mono)' }}>Conectando à VPS e carregando planilha...</div>
+            <style>{`
+              @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
+          </div>
+        );
+      }
+
+      return (
+        <div className={`dashboard-layout ${isSidebarExpanded ? 'sidebar-expanded' : ''}`} style={{ background: COLORS.bg, minHeight: '100vh', width: '100%' }}>
+          <style>{`
+            .rows-bg { background-image: repeating-linear-gradient(180deg, rgba(218,167,61,0.03) 0px, rgba(218,167,61,0.03) 1px, transparent 1px, transparent 14px); }
+            table.rk th { text-align: left; font-size: 11px; color: ${COLORS.textFaint}; font-weight: 500; padding: 8px 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${COLORS.border}; }
+            table.rk td { padding: 10px 10px; font-size: 13px; border-bottom: 1px solid ${COLORS.border}; }
+            table.rk tr:last-child td { border-bottom: none; }
+            .badge-demo { background: rgba(216,167,61,0.1); border: 1px solid ${COLORS.gold}44; color: ${COLORS.gold}; font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-family: var(--font-mono); }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          `}</style>
+
+          {/* SIDEBAR */}
+          <aside className={`sidebar ${isSidebarExpanded ? 'expanded' : 'collapsed'}`} id="sidebar">
+            <div className="sidebar-header">
+              <div className="sidebar-logo">
+                <i className="fa-solid fa-leaf" style={{ color: COLORS.gold }}></i>
+                <span className="sidebar-brand-text">Connect <span style={{ color: COLORS.gold, fontWeight: 'bold' }}>Agro</span></span>
+              </div>
+              <button onClick={() => {
+                const nextVal = !isSidebarExpanded;
+                setIsSidebarExpanded(nextVal);
+                localStorage.setItem('sidebar_expanded', String(nextVal));
+              }} className="sidebar-toggle-btn">
+                <i className={`fa-solid ${isSidebarExpanded ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
+              </button>
+            </div>
+            
+            <nav className="sidebar-nav">
+              <button className={`nav-item ${activeView === 'view-geral' ? 'active' : ''}`} onClick={() => { setActiveView('view-geral'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-chart-line"></i><span className="nav-label">Geral</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-campaign' ? 'active' : ''}`} onClick={() => { setActiveView('view-campaign'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-bullhorn"></i><span className="nav-label">Campanhas</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-video' ? 'active' : ''}`} onClick={() => { setActiveView('view-video'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-video"></i><span className="nav-label">Vídeos</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-leads' ? 'active' : ''}`} onClick={() => { setActiveView('view-leads'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-users"></i><span className="nav-label">Leads</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-events' ? 'active' : ''}`} onClick={() => { setActiveView('view-events'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-bolt"></i><span className="nav-label">Eventos</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-ai' ? 'active' : ''}`} onClick={() => { setActiveView('view-ai'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }} data-view="view-ai">
+                <i className="fa-solid fa-brain"></i><span className="nav-label">Insights IA</span>
+              </button>
+            </nav>
+            
+            <div className="sidebar-footer">
+              <div className="sidebar-profile">
+                <img src={isDemoMode ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80' : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'} alt="Avatar" />
+                <div className="sidebar-user-details">
+                  <span className="sidebar-user-name">{isDemoMode ? 'Usuário Demonstrativo' : 'Administrador VPS'}</span>
+                  <span className="sidebar-user-email">{isDemoMode ? 'demo@connectagro.com.br' : 'admin@connectagro.com.br'}</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* MAIN CONTAINER */}
+          <div className="main-container" onClick={() => {
+            if (window.innerWidth <= 768 && isSidebarExpanded) {
+              setIsSidebarExpanded(false);
+              localStorage.setItem('sidebar_expanded', 'false');
+            }
+          }}>
+            {/* Header principal */}
+            <div className="rows-bg" style={{ padding: '20px 22px', borderRadius: 14, border: `1px solid ${COLORS.border}`, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: COLORS.gold, textTransform: 'uppercase', letterSpacing: 1 }}>Connect · Setor Agro</span>
+                  {isDemoMode && <span className="badge-demo">MODO DEMO</span>}
+                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <i className="fa-solid fa-wheat-awn" style={{ color: COLORS.gold }}></i>
+                  <span>Dashboard de leads WhatsApp</span>
+                </div>
+                <div style={{ fontSize: 13, color: COLORS.textSoft, marginTop: 4 }}>
+                  {fmtNum(leads.length)} leads no total · anúncios Meta integrados
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-briefcase" style={{ color: COLORS.teal, fontSize: 13 }}></i>
+                  <select 
+                    value={selectedClient} 
+                    onChange={(e) => {
+                      const c = clients.find(item => item.name === e.target.value);
+                      if (c) { setSelectedClient(c.name); setSelectedClientId(c.id); }
+                    }} 
+                    style={{ background: 'transparent', border: 'none', color: COLORS.text, fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer', paddingRight: 10 }}
+                  >
+                    {clients.map(c => <option key={c.id} value={c.name} style={{ background: COLORS.surface }}>{c.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="date-navigation-wrapper">
+                  <button disabled={!startDate || !endDate} onClick={() => shiftDateRange('prev')} className="date-nav-btn">
+                    <i className="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <div style={{ position: 'relative' }}>
+                    <div onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="date-picker-trigger" id="date-picker-trigger">
+                      <i className="fa-solid fa-calendar-days calendar-icon"></i>
+                      <span>{getDateDisplayLabel()}</span>
+                      <i className="fa-solid fa-chevron-down trigger-arrow"></i>
+                    </div>
+                    {isDatePickerOpen && (
+                      <div className="date-picker-dropdown" id="date-picker-dropdown">
+                        <div className="date-picker-options">
+                          <button className={`picker-opt-btn ${dateFilter === 'today' ? 'active' : ''}`} onClick={() => { updateDateRange('today'); setIsDatePickerOpen(false); }}>Hoje</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'yesterday' ? 'active' : ''}`} onClick={() => { updateDateRange('yesterday'); setIsDatePickerOpen(false); }}>Ontem</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'hoje_ontem' ? 'active' : ''}`} onClick={() => { updateDateRange('hoje_ontem'); setIsDatePickerOpen(false); }}>Hoje e Ontem</button>
+                          <button className={`picker-opt-btn ${dateFilter === '3' ? 'active' : ''}`} onClick={() => { updateDateRange('3'); setIsDatePickerOpen(false); }}>Últimos 3 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === '7' ? 'active' : ''}`} onClick={() => { updateDateRange('7'); setIsDatePickerOpen(false); }}>Últimos 7 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === '15' ? 'active' : ''}`} onClick={() => { updateDateRange('15'); setIsDatePickerOpen(false); }}>Últimos 15 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'ultimo_mes' ? 'active' : ''}`} onClick={() => { updateDateRange('ultimo_mes'); setIsDatePickerOpen(false); }}>Último mês</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'mes_atual' ? 'active' : ''}`} onClick={() => { updateDateRange('mes_atual'); setIsDatePickerOpen(false); }}>Mês atual</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'custom' ? 'active' : ''}`} onClick={() => setDateFilter('custom')}>Personalizado</button>
+                        </div>
+                        {dateFilter === 'custom' && (
+                          <div className="custom-date-inputs">
+                            <div className="input-group-row">
+                              <div className="date-input-field">
+                                <label>Início</label>
+                                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />
+                              </div>
+                              <div className="date-input-field">
+                                <label>Fim</label>
+                                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
+                              </div>
+                            </div>
+                            <button className="btn-apply-date" onClick={() => {
+                              if (customStartDate && customEndDate) {
+                                const startD = new Date(customStartDate + 'T00:00:00');
+                                const endD = new Date(customEndDate + 'T23:59:59');
+                                if (startD > endD) { alert('A data de início não pode ser maior que a data de fim.'); return; }
+                                const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+                                if (endD > todayEnd) { alert('A data final não pode ser posterior a hoje.'); return; }
+                                updateDateRange('custom', customStartDate, customEndDate); setIsDatePickerOpen(false);
+                              } else { alert('Selecione ambas as datas.'); }
+                            }}>Aplicar</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button disabled={!startDate || !endDate} onClick={() => shiftDateRange('next')} className="date-nav-btn">
+                    <i className="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+
+                <a href="/index.html" style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, textDecoration: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }} title="Versão clássica">
+                  <i className="fa-solid fa-clock-rotate-left"></i> Versão Antiga
+                </a>
+                <button onClick={() => { setActiveView('view-events'); setSettingsTab('status'); }} style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, fontSize: 12.5, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                  <i className="fa-solid fa-gear"></i> Configurações
+                </button>
+                <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 12.5, padding: '8px 12px', borderRadius: 10, cursor: 'pointer' }}>
+                  <i className="fa-solid fa-right-from-bracket"></i>
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div style={{ background: COLORS.rust + '20', border: `1px solid ${COLORS.rust}55`, color: '#E8A98C', fontSize: 13, padding: '12px 18px', borderRadius: 10, marginBottom: 22 }}>
+                <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>{error}
+              </div>
+            )}
+
+            {!isDemoMode && !mappedMetaAccountId && (
+              <div style={{ background: 'rgba(216, 167, 61, 0.06)', border: `1px solid rgba(216, 167, 61, 0.25)`, borderRadius: 12, padding: '16px 20px', marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(216, 167, 61, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}><i className="fa-solid fa-circle-exclamation"></i></div>
+                  <div>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>Conta Ads Desvinculada</h4>
+                    <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>Não há conta Meta Ads vinculada na VPS.</p>
+                  </div>
+                </div>
+                <button onClick={() => { setActiveView('view-events'); setSettingsTab('meta'); }} style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-link"></i> Vincular Conta do Facebook
+                </button>
+              </div>
+            )}
+
+            {/* VIEW 1: GERAL */}
+            {activeView === 'view-geral' && (
+              <div className="dashboard-view">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                  {['instagram', 'facebook'].map(p => (
+                    <Chip key={p} active={platforms.includes(p)} onClick={() => toggle(platforms, setPlatforms, p)}>{PLATFORM_LABEL[p]}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  {['android', 'ios'].map(d => (
+                    <Chip key={d} active={devices.includes(d)} onClick={() => toggle(devices, setDevices, d)} color={COLORS.teal}>{d === 'android' ? 'Android' : 'iOS'}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  {['lead', 'lead qualificado', 'convertido', 'sem interesse'].map(s => (
+                    <Chip key={s} active={statuses.includes(s)} onClick={() => toggle(statuses, setStatuses, s)} color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  <select value="" onChange={e => { if (e.target.value) toggle(months, setMonths, e.target.value); }} style={{ background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: 999, color: COLORS.textSoft, fontSize: 12.5, padding: '6px 10px', outline: 'none' }}>
+                    <option value="" style={{ background: COLORS.surface }}>+ Mês</option>
+                    {allMonths.filter(m => !months.includes(m)).map(m => <option key={m} value={m} style={{ background: COLORS.surface }}>{m}</option>)}
+                  </select>
+                  {months.map(m => <Chip key={m} active onClick={() => toggle(months, setMonths, m)} color={COLORS.slate}>{m} ×</Chip>)}
+                  {hasFilters && (
+                    <button onClick={resetFilters} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: COLORS.textFaint, fontSize: 12, cursor: 'pointer' }}>
+                      <RotateCcw size={12} /> limpar filtros
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+                  <KPI icon={Users} label="Total de conversas" value={fmtNum(kpis.total)} sub={metaMetrics ? `${fmtNum(metaMetrics.conversasMeta)} cliques WhatsApp` : 'Sem dados Meta'} accent={COLORS.slate} />
+                  {metaMetrics && <KPI icon={DollarSign} label="Custo por lead" value={fmtBRL(metaMetrics.cpl)} sub={`vs ${fmtBRL(metaMetrics.cpc)} custo clique`} accent={COLORS.rust} />}
+                  <KPI icon={TrendingUp} label="Taxa de qualificação" value={fmtPct(kpis.taxaQual)} sub="qualificado + convertido" accent={COLORS.teal} />
+                  <KPI icon={Target} label="Taxa de conversão" value={fmtPct(kpis.taxaConv)} sub={`${fmtNum(kpis.convertidos)} convertidos`} accent={COLORS.gold} />
+                  <KPI icon={DollarSign} label="Receita gerada" value={fmtBRL(kpis.receita)} accent={COLORS.gold} />
+                  <KPI icon={Smartphone} label="Total investido" value={metaMetrics ? fmtBRL(metaMetrics.spend) : "Sem Vínculo"} sub={metaMetrics ? "No período selecionado" : "Sem conta vinculada"} accent={metaMetrics ? COLORS.gold : COLORS.rust} />
+                </div>
+
+                {insights.length > 0 && (
+                  <Card style={{ background: COLORS.surfaceHi }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <Sparkles size={15} color={COLORS.gold} />
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>Padrões encontrados</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+                      {insights.map((ins, i) => (
+                        <div key={i} style={{ fontSize: 13, color: COLORS.textSoft, display: 'flex', gap: 8 }}>
+                          <span style={{ color: COLORS.gold, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(i + 1).padStart(2, '0')}</span>
+                          <span>{ins}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                  <Card>
+                    <SectionTitle eyebrow="Funil" title="Do lead à venda" sub="Leads sem interesse saem do funil" />
+                    {funnel.map((f, i) => (
+                      <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+                          <span style={{ color: COLORS.textSoft }}>{f.stage}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>{f.value !== null ? `${fmtNum(f.value)} · ${fmtPct(f.pct)}` : 'Meta desvinculado'}</span>
+                        </div>
+                        <div style={{ height: 10, background: COLORS.surfaceHi, borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(f.pct, 100)}%`, background: ['#3b82f6', COLORS.slate, '#4F8F73', '#a855f7', COLORS.gold][i] || COLORS.slate, borderRadius: 6 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </Card>
+                  
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Tendência" title="Leads e conversões por mês" />
+                    <div style={{ width: '100%', height: 190 }}>
+                      {trend.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={trend} margin={{ left: -20, right: 10 }}>
+                            <CartesianGrid stroke={COLORS.border} vertical={false} />
+                            <XAxis dataKey="mes" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+                            <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Line type="monotone" dataKey="leads" stroke={COLORS.slate} strokeWidth={2} dot={{ r: 3 }} />
+                            <Line type="monotone" dataKey="convertidos" stroke={COLORS.gold} strokeWidth={2} dot={{ r: 3 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                  </Card>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Canal" title="Instagram vs Facebook" />
+                    <div style={{ width: '100%', height: 180 }}>
+                      {byPlatform.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={byPlatform} margin={{ left: -20, right: 10 }}>
+                            <CartesianGrid stroke={COLORS.border} vertical={false} />
+                            <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                            <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="leads" fill={COLORS.slate} radius={[6, 6, 0, 0]} />
+                            <Bar dataKey="convertidos" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                  </Card>
+
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Dispositivo" title="Android vs iOS" />
+                    <div style={{ width: '100%', height: 160 }}>
+                      {byDevice.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={byDevice} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={3}>
+                              {byDevice.map((d, i) => <Cell key={i} fill={d.name === 'android' ? COLORS.teal : COLORS.gold} stroke="none" />)}
+                            </Pie>
+                            <Tooltip content={<CustomTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 14 }}>
+                      {byDevice.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: COLORS.textSoft }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.name === 'android' ? COLORS.teal : COLORS.gold }} />
+                          <span style={{ textTransform: 'capitalize' }}>{d.name}</span> ({d.value})
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Horário" title="Quando os leads chegam" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '54px repeat(4, 1fr)', gap: 4, fontSize: 10.5 }}>
+                      <div />
+                      {PERIOD_ORDER.map(p => <div key={p} style={{ textAlign: 'center', color: COLORS.textFaint }}>{p}</div>)}
+                      {DAY_ORDER.map(day => (
+                        <React.Fragment key={day}>
+                          <div style={{ color: COLORS.textFaint, display: 'flex', alignItems: 'center' }}>{day}</div>
+                          {PERIOD_ORDER.map(period => {
+                            const v = heatmap.grid[day][period];
+                            const intensity = v / (heatmap.max || 1);
+                            return (
+                              <div key={period} style={{
+                                height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: v > 0 ? `rgba(216,167,61,${0.08 + intensity * 0.75})` : 'transparent',
+                                border: v > 0 ? `1px solid rgba(216,167,61,${0.05 + intensity * 0.2})` : `1px solid ${COLORS.border}`,
+                                color: intensity > 0.5 ? COLORS.goldText : COLORS.textFaint, fontFamily: 'var(--font-mono)', fontSize: 10
+                              }}>{v || ''}</div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2: CAMPAIGN ANALYSIS */}
+            {activeView === 'view-campaign' && (
+              <div className="dashboard-view animate-fade-in">
+                <Card style={{ minHeight: 300 }}>
+                  <SectionTitle eyebrow="Performance" title="Top 5 Campanhas" sub="Melhores campanhas em volume de leads" />
+                  <div style={{ width: '100%', height: 220 }}>
+                    {campaigns.slice(0, 5).length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={campaigns.slice(0, 5)} margin={{ left: -20, right: 10 }}>
+                          <CartesianGrid stroke={COLORS.border} vertical={false} />
+                          <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                          <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Bar dataKey="leads" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                  </div>
+                </Card>
+
+                {/* Auditoria & Raio-X Meta Ads */}
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ background: 'rgba(24, 119, 242, 0.1)', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+                        <i className="fa-brands fa-facebook" style={{ color: '#1877F2', fontSize: '1.4rem' }}></i>
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Auditoria & Raio-X Meta Ads</h3>
+                        <p style={{ fontSize: 12, color: COLORS.textSoft, margin: '2px 0 0 0' }}>Análise detalhada do investimento e cliques Meta Ads cruzados com CRM</p>
+                      </div>
+                    </div>
+                    {(selectedMetaCampaignId || selectedMetaAdsetId || selectedMetaAdId) && (
+                      <button onClick={() => { setSelectedMetaCampaignId(null); setSelectedMetaAdsetId(null); setSelectedMetaAdId(null); }} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Limpar Filtros</button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Investimento Meta</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>{fmtBRL(metaAuditMetrics.spend)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Alcance</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.slate }}>{fmtNum(metaAuditMetrics.reach)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Cliques WhatsApp</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.gold }}>{fmtNum(metaAuditMetrics.conversas)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Leads CRM</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.teal }}>{fmtNum(metaAuditMetrics.crmLeads)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Vendas CRM</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.gold }}>{fmtNum(metaAuditMetrics.crmVendas)}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                    <div style={{ padding: 20, borderRadius: 16, border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.01)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 4, borderRadius: 8 }}>
+                          <button onClick={() => setExplorerLevel('campaign')} style={{ background: explorerLevel === 'campaign' ? COLORS.gold : 'transparent', color: explorerLevel === 'campaign' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Campanhas</button>
+                          <button onClick={() => setExplorerLevel('adset')} style={{ background: explorerLevel === 'adset' ? COLORS.gold : 'transparent', color: explorerLevel === 'adset' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Conjuntos</button>
+                          <button onClick={() => setExplorerLevel('creative')} style={{ background: explorerLevel === 'creative' ? COLORS.gold : 'transparent', color: explorerLevel === 'creative' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Criativos</button>
+                        </div>
+                        <input type="text" placeholder="Filtrar..." value={explorerSearch} onChange={e => setExplorerSearch(e.target.value)} style={{ padding: '8px 12px', fontSize: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${COLORS.border}`, borderRadius: 6, color: '#fff', outline: 'none' }} />
+                      </div>
+                      
+                      <div style={{ overflowX: 'auto', maxHeight: 300 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12.5 }}>
+                          <thead>
+                            <tr style={{ borderBottom: `1px solid ${COLORS.borderStrong}` }}>
+                              <th style={{ padding: '10px 12px' }}>Elemento</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Investido</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Cliques</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Cliques Whats</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>CRM Leads</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>CPL CRM</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {explorerData.length > 0 ? explorerData.map((row, i) => {
+                              let displayName = '', subName = '', rowId = '', isSelected = false;
+                              if (explorerLevel === 'campaign') { rowId = row.campaign_id; displayName = row.campaign_name; isSelected = selectedMetaCampaignId === rowId; }
+                              else if (explorerLevel === 'adset') { rowId = row.adset_id; displayName = row.adset_name; subName = row.campaign_name; isSelected = selectedMetaAdsetId === rowId; }
+                              else { rowId = row.ad_id; displayName = row.ad_name; subName = row.adset_name; isSelected = selectedMetaAdId === rowId; }
+                              
+                              let leadsCount = 0;
+                              if (explorerLevel === 'campaign') leadsCount = leads.filter(l => l.campanha_curta && l.campanha_curta.toLowerCase() === displayName.toLowerCase()).length;
+                              else if (explorerLevel === 'adset') leadsCount = leads.filter(l => l.adset && l.adset.toLowerCase() === displayName.toLowerCase()).length;
+                              else {
+                                const clean = displayName.replace(/\s*\[v\d+\]$/, '').toLowerCase();
+                                leadsCount = leads.filter(l => l.criativo && (l.criativo.toLowerCase() === displayName.toLowerCase() || l.criativo.toLowerCase() === clean)).length;
+                              }
+                              const cpl = leadsCount > 0 ? (row.spend / leadsCount) : 0;
+                              
+                              return (
+                                <tr key={rowId || i} onClick={() => {
+                                  if (explorerLevel === 'campaign') { setSelectedMetaCampaignId(selectedMetaCampaignId === rowId ? null : rowId); setSelectedMetaAdsetId(null); setSelectedMetaAdId(null); }
+                                  else if (explorerLevel === 'adset') { setSelectedMetaAdsetId(selectedMetaAdsetId === rowId ? null : rowId); setSelectedMetaAdId(null); }
+                                  else { setSelectedMetaAdId(selectedMetaAdId === rowId ? null : rowId); }
+                                }} style={{ background: isSelected ? 'rgba(218, 167, 61, 0.15)' : 'transparent', cursor: 'pointer', borderBottom: `1px solid ${COLORS.border}` }}>
+                                  <td style={{ padding: '10px 12px' }}>
+                                    <div style={{ fontWeight: 600, color: COLORS.text }}>{displayName}</div>
+                                    {subName && <div style={{ fontSize: 10.5, color: COLORS.textSoft, marginTop: 2 }}>{subName}</div>}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtBRL(row.spend || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(row.clicks || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(row.conversas || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(leadsCount)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{cpl > 0 ? fmtBRL(cpl) : '-'}</td>
+                                </tr>
+                              );
+                            }) : <tr><td colSpan={6} style={{ textAlign: 'center', padding: 20, color: COLORS.textSoft }}>Nenhum registro</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: 20, borderRadius: 16, border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column' }}>
+                      <h4 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <i className="fa-solid fa-filter" style={{ color: COLORS.gold }}></i>Funil Auditoria Meta Ads
+                      </h4>
+                      <div className="funnel-container">
+                        {[
+                          { name: 'Alcance', val: metaAuditMetrics.reach },
+                          { name: 'Cliques Whats', val: metaAuditMetrics.conversas },
+                          { name: 'Leads CRM', val: metaAuditMetrics.crmLeads },
+                          { name: 'Vendas CRM', val: metaAuditMetrics.crmVendas }
+                        ].map((step, i, arr) => {
+                          let conversionRate = 0;
+                          if (i > 0 && arr[i-1].val > 0) conversionRate = (step.val / arr[i-1].val) * 100;
+                          return (
+                            <div key={step.name} className="funnel-step-wrapper">
+                              {i > 0 && <div className="funnel-conversion-badge highlight"><i className="fa-solid fa-arrow-down-long"></i><span>Conversão: <strong>{conversionRate.toFixed(1)}%</strong></span></div>}
+                              <div className={`funnel-step step-${i + 1}`} style={{ height: 32 }}>
+                                <div className="funnel-step-label"><span>{step.name}</span><span>{fmtNum(step.val)}</span></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <SectionTitle eyebrow="Ranking" title="Performance por campanha" sub="Clique nas colunas para ordenar" />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[['leads', 'Leads'], ['taxa', 'Conversão'], ['receita', 'Receita']].map(([k, label]) => (
+                        <Chip key={k} active={sortKey === k} onClick={() => setSortKey(k)}>{label}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="rk" style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+                      <thead><tr><th>Campanha</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th></tr></thead>
+                      <tbody>
+                        {campaigns.length > 0 ? campaigns.map((c, i) => (
+                          <tr key={i}>
+                            <td style={{ color: COLORS.text, fontWeight: 500 }}>{c.name}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtNum(c.leads)}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ width: 50, height: 5, background: COLORS.surfaceHi, borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ width: `${Math.min(c.taxa, 100)}%`, height: '100%', background: COLORS.teal }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: c.taxa > kpis.taxaConv ? COLORS.gold : COLORS.textSoft }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                {c.taxa > kpis.taxaConv ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(c.taxa)}
+                              </span>
+                            </td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtBRL(c.receita)}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: COLORS.textFaint }}>{c.ticket ? fmtBRL(c.ticket) : '—'}</td>
+                          </tr>
+                        )) : <tr><td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Sem dados</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* VIEW 3: VIDEO ANALYSIS */}
+            {activeView === 'view-video' && (
+              <div className="dashboard-view animate-fade-in">
+                <div className="video-analysis-placeholder glass-panel" style={{ padding: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, background: COLORS.surface, borderRadius: 12 }}>
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(218, 167, 61, 0.1)', border: `2px solid ${COLORS.gold}`, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <i className="fa-solid fa-play" style={{ fontSize: 40, color: COLORS.gold, marginLeft: 6 }}></i>
+                  </div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: COLORS.text }}>Análise de Retenção de Vídeos</h2>
+                  <p style={{ color: COLORS.textSoft, maxWidth: 600, lineHeight: 1.6, fontSize: 14 }}>
+                    Acompanhe a performance dos seus criativos em vídeo. Visualize curvas de retenção, hook rates e hold rates.
+                  </p>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, width: '100%', marginTop: 20 }}>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Hook Rate Médio (3s)</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.gold, marginTop: 8 }}>42.5%</h3>
+                      <span style={{ fontSize: 12, color: COLORS.teal }}><i className="fa-solid fa-arrow-up"></i> +4.2%</span>
+                    </div>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Hold Rate Médio (15s)</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.teal, marginTop: 8 }}>18.2%</h3>
+                      <span style={{ fontSize: 12, color: COLORS.teal }}><i className="fa-solid fa-arrow-up"></i> +1.8%</span>
+                    </div>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Tempo Médio de Reprodução</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.rust, marginTop: 8 }}>8.4s</h3>
+                      <span style={{ fontSize: 12, color: COLORS.rust }}><i className="fa-solid fa-arrow-down"></i> -0.3s</span>
+                    </div>
+                  </div>
+
+                  <div style={{ width: '100%', height: 300, marginTop: 24, border: `1px solid ${COLORS.border}`, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05, background: 'repeating-linear-gradient(0deg, #fff, #fff 1px, transparent 1px, transparent 40px)' }}></div>
+                    <svg viewBox="0 0 1000 300" style={{ width: '85%', height: '70%', overflow: 'visible' }}>
+                      <defs>
+                        <linearGradient id="video-grad-agro" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor={COLORS.gold} stopOpacity="0.8" />
+                          <stop offset="100%" stopColor={COLORS.teal} stopOpacity="0.1" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M 0 50 Q 150 70 300 180 T 600 240 T 1000 270 L 1000 300 L 0 300 Z" fill="url(#video-grad-agro)" />
+                      <path d="M 0 50 Q 150 70 300 180 T 600 240 T 1000 270" fill="none" stroke={COLORS.gold} strokeWidth="4" />
+                      <circle cx="300" cy="180" r="6" fill="#fff" stroke={COLORS.gold} strokeWidth="3" />
+                      <text x="310" y="170" fill="#fff" fontSize="13" fontWeight="600">3s (Hook Rate: 42.5%)</text>
+                      <circle cx="600" cy="240" r="6" fill="#fff" stroke={COLORS.teal} strokeWidth="3" />
+                      <text x="610" y="230" fill="#fff" fontSize="13" fontWeight="600">15s (Hold Rate: 18.2%)</text>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeView === 'view-leads' && (
+              <div className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <Card>
+                  <SectionTitle eyebrow="Criativos" title="Melhores anúncios por volume de leads" />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+                    {creatives.length > 0 ? creatives.map((c, i) => (
+                      <div key={i} style={{ background: COLORS.surfaceHi, borderRadius: 10, border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
+                        <div style={{ height: 90, background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          {c.thumb ? <img src={c.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} /> : null}
+                          <div style={{ display: c.thumb ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: COLORS.textFaint }}><ImageOff size={20} /></div>
+                        </div>
+                        <div style={{ padding: 10 }}>
+                          <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titulo}</div>
+                          <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.anuncio}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                            <span style={{ color: COLORS.textSoft }}>{fmtNum(c.leads)} leads</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.gold }}>{fmtPct(c.taxa)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )) : <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Sem criativos</div>}
+                  </div>
+                </Card>
+
+                {/* CRM Leads Spreadsheet */}
+                <Card style={{ padding: 24, minHeight: 480 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
+                    <div>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: COLORS.text }}>CRM Leads Spreadsheet</h3>
+                      <span style={{ fontSize: 12, color: COLORS.textSoft }}>{fmtNum(sortedLeads.length)} leads encontrados</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <div className="search-box" style={{ margin: 0, position: 'relative' }}>
+                        <i className="fa-solid fa-magnifying-glass search-icon" style={{ position: 'absolute', left: 12, top: 12, color: COLORS.textFaint }}></i>
+                        <input 
+                          type="text" 
+                          id="leads-table-search" 
+                          placeholder="Buscar lead por nome/telefone..." 
+                          value={leadsSearchQuery}
+                          onChange={(e) => {
+                            setLeadsSearchQuery(e.target.value);
+                            setLeadsCurrentPage(1);
+                          }}
+                          style={{ padding: '10px 12px 10px 36px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', outline: 'none' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table id="leads-spreadsheet-table" className="leads-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                          <th style={{ padding: 10, width: 60, textAlign: 'center' }}>Preview</th>
+                          <th style={{ padding: 10 }}>Nome</th>
+                          <th style={{ padding: 10 }}>WhatsApp/Telefone</th>
+                          <th style={{ padding: 10 }}>Plataforma</th>
+                          <th style={{ padding: 10 }}>Dispositivo</th>
+                          <th style={{ padding: 10 }}>Status</th>
+                          <th 
+                            style={{ padding: 10, cursor: 'pointer', userSelect: 'none' }} 
+                            data-column="date"
+                            onClick={() => setLeadsSortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
+                          >
+                            Data/Hora <i className={`fa-solid ${leadsSortDirection === 'desc' ? 'fa-chevron-down' : 'fa-chevron-up'}`} style={{ fontSize: 10, marginLeft: 4 }}></i>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="leads-spreadsheet-body">
+                        {paginatedLeads.map(lead => (
+                          <tr key={lead.id} data-mock={lead.mock_type || undefined} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                            <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: 10 }}>
+                              <div style={{ position: 'relative', width: 40, height: 40, margin: '0 auto', display: 'flex', alignItems: 'center', justifycontent: 'center' }}>
+                                <img 
+                                  className="ad-thumbnail" 
+                                  src={lead.thumb || lead.thumbnail_url || ''} 
+                                  onClick={() => setLightboxImage(lead.thumb || lead.thumbnail_url)}
+                                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
+                                />
+                                <span className="thumbnail-fallback" style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', borderRadius: 4, color: COLORS.textFaint }}><i className="fa-solid fa-image-slash"></i></span>
+                              </div>
+                            </td>
+                            <td className="col-name" style={{ padding: 10, fontWeight: 600, color: '#fff' }}>{lead.name || '—'}</td>
+                            <td className="col-phone" style={{ padding: 10 }}>{lead.phone || '—'}</td>
+                            <td className="col-platform" style={{ padding: 10 }}>{PLATFORM_LABEL[lead.plataforma] || lead.plataforma || '—'}</td>
+                            <td className="col-device" style={{ padding: 10 }}>{lead.dispositivo || '—'}</td>
+                            <td className="col-status" style={{ padding: 10 }}>{STATUS_LABEL[lead.status] || lead.status || '—'}</td>
+                            <td className="col-date" style={{ padding: 10 }}>{lead.date || lead.data_dt || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {sortedLeads.length === 0 && (
+                    <div id="leads-empty-placeholder" style={{ textAlign: 'center', padding: 40, color: COLORS.textFaint }}>
+                      <i className="fa-solid fa-folder-open" style={{ fontSize: 40, marginBottom: 12, display: 'block' }}></i>
+                      <p>Nenhum lead correspondente encontrado</p>
+                    </div>
+                  )}
+
+                  {/* Pagination */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
+                    <div id="leads-page-label" style={{ fontSize: 13, color: COLORS.textSoft }}>Página {leadsCurrentPage} de {leadsTotalPages}</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button 
+                        id="leads-pagination-prev" 
+                        disabled={leadsCurrentPage === 1}
+                        onClick={() => setLeadsCurrentPage(prev => Math.max(1, prev - 1))}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === 1 ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === 1 ? 0.5 : 1 }}
+                      >
+                        <i className="fa-solid fa-chevron-left"></i> Anterior
+                      </button>
+                      <button 
+                        id="leads-pagination-next" 
+                        disabled={leadsCurrentPage === leadsTotalPages}
+                        onClick={() => setLeadsCurrentPage(prev => Math.min(leadsTotalPages, prev + 1))}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === leadsTotalPages ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === leadsTotalPages ? 0.5 : 1 }}
+                      >
+                        Próxima <i className="fa-solid fa-chevron-right"></i>
+                      </button>
+                      <button 
+                        id="leads-pagination-last" 
+                        disabled={leadsCurrentPage === leadsTotalPages}
+                        onClick={() => setLeadsCurrentPage(leadsTotalPages)}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === leadsTotalPages ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === leadsTotalPages ? 0.5 : 1 }}
+                      >
+                        Última <i className="fa-solid fa-angles-right"></i>
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* VIEW 5: EVENT ANALYSIS */}
+            {activeView === 'view-events' && (
+              <div className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Header buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                  <div>
+                    <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: COLORS.text }}>Análise de Eventos do Meta Pixel</h2>
+                    <p style={{ fontSize: 13, color: COLORS.textSoft }}>Verifique discrepâncias e analise o comportamento do Pixel em tempo real.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button 
+                      id="btn-load-pixel-events" 
+                      onClick={() => {
+                        if (pixelIdInput.trim() === '') {
+                          setIsSettingsOpen(true);
+                          setPixelIdError('Insira um ID de Pixel válido');
+                          return;
+                        }
+                        if (!/^\d+$/.test(pixelIdInput.trim())) {
+                          setIsSettingsOpen(true);
+                          setPixelToastMessage('ID do Pixel precisa ser apenas números');
+                          return;
+                        }
+                        setPixelId(pixelIdInput.trim());
+                        loadPixelEvents(pixelIdInput.trim());
+                      }}
+                      className="btn btn-primary" 
+                      style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <i className="fa-solid fa-cloud-arrow-down"></i> Carregar Eventos Pixel
+                    </button>
+                    <button 
+                      id="btn-clear-pixel-events" 
+                      onClick={clearPixelEvents}
+                      style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, padding: '10px 20px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <i className="fa-solid fa-eraser"></i> Limpar Eventos
+                    </button>
+                  </div>
+                </div>
+
+                {/* API Error Message */}
+                {pixelApiError && (
+                  <div id="pixel-error-message" style={{ padding: 15, borderRadius: 8, background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#f43f5e', fontSize: 14, fontWeight: 500 }}>
+                    {pixelApiError}
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {!pixelData && (
+                  <div id="pixel-empty-placeholder" style={{ padding: '60px 20px', textAlign: 'center', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14 }}>
+                    <i className="fa-solid fa-circle-nodes" style={{ fontSize: 48, color: COLORS.textFaint, marginBottom: 16, display: 'block' }}></i>
+                    <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 8 }}>Nenhum dado consultado</h3>
+                    <p style={{ fontSize: 13, color: COLORS.textSoft, maxWidth: 400, margin: '0 auto' }}>Insira o ID do Pixel nas configurações e clique em "Carregar Eventos Pixel" para visualizar a análise.</p>
+                  </div>
+                )}
+
+                {/* Data View */}
+                {pixelData && (
+                  <div id="pixel-data-container" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {/* KPIs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>PageView</div>
+                        <div id="pixel-pageview-count" style={{ fontSize: 32, fontWeight: 700, color: '#fff', marginTop: 10 }}>{fmtNum(pixelData.events.pageview)}</div>
+                      </Card>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Leads (Pixel)</div>
+                        <div id="pixel-lead-count" style={{ fontSize: 32, fontWeight: 700, color: COLORS.gold, marginTop: 10 }}>{fmtNum(pixelData.events.lead)}</div>
+                      </Card>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Purchase</div>
+                        <div id="pixel-purchase-count" style={{ fontSize: 32, fontWeight: 700, color: COLORS.teal, marginTop: 10 }}>{fmtNum(pixelData.events.purchase)}</div>
+                      </Card>
+                      {/* Discrepancy Card */}
+                      {(() => {
+                        let discrepancyPct = 0;
+                        if (pixelData.discrepancy !== null && pixelData.discrepancy !== undefined) {
+                          discrepancyPct = pixelData.discrepancy;
+                        } else {
+                          const spreadsheetLeads = filtered.length;
+                          const pixelLeads = pixelData.events.lead || 0;
+                          const diff = Math.abs(spreadsheetLeads - pixelLeads);
+                          const maxVal = Math.max(spreadsheetLeads, pixelLeads);
+                          discrepancyPct = maxVal > 0 ? Math.round((diff / maxVal) * 100) : 0;
+                        }
+                        const isHigh = discrepancyPct >= 20;
+                        return (
+                          <div 
+                            id="pixel-discrepancy-card" 
+                            className={`kpi-card glass-panel ${isHigh ? 'discrepancy-warning-high' : ''}`}
+                            style={{ 
+                              padding: 20, borderRadius: 14, background: COLORS.surface, 
+                              border: `1px solid ${isHigh ? '#ef4444' : COLORS.border}`, transition: 'all 0.3s' 
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Margem de Discrepância</div>
+                            <div id="discrepancy-margin-val" style={{ fontSize: 32, fontWeight: 700, color: isHigh ? '#ef4444' : COLORS.teal, marginTop: 10 }}>{discrepancyPct}%</div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Timeline and list */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                      <Card style={{ minHeight: 350 }}>
+                        <h4 style={{ fontSize: 14, marginBottom: 16, color: '#fff' }}>Linha do Tempo dos Eventos</h4>
+                        <div style={{ position: 'relative', height: 280, width: '100%' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(243,241,231,0.05)" />
+                              <XAxis dataKey="date" stroke="#94a3b8" />
+                              <YAxis stroke="#94a3b8" />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Line type="monotone" dataKey="PageView" stroke="#a855f7" strokeWidth={2} name="PageView" />
+                              <Line type="monotone" dataKey="Lead" stroke="#00f2fe" strokeWidth={2} name="Lead" />
+                              <Line type="monotone" dataKey="Purchase" stroke="#10b981" strokeWidth={2} name="Purchase" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </Card>
+
+                      <Card style={{ maxHeight: 350, display: 'flex', flexDirection: 'column' }}>
+                        <h4 style={{ fontSize: 14, marginBottom: 16, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <i className="fa-solid fa-clock-rotate-left"></i> Histórico de Eventos Recentes
+                        </h4>
+                        <div id="pixel-events-list" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 5 }}>
+                          {pixelData.timeline.map((item, idx) => {
+                            let icon = <i className="fa-solid fa-eye" style={{ color: '#a855f7' }}></i>;
+                            if (item.event === 'Lead') icon = <i className="fa-solid fa-user-plus" style={{ color: '#00f2fe' }}></i>;
+                            else if (item.event === 'Purchase') icon = <i className="fa-solid fa-cart-shopping" style={{ color: '#10b981' }}></i>;
+                            const time = new Date(item.timestamp).toLocaleString('pt-BR');
+                            return (
+                              <div key={idx} style={{ padding: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 6, border: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}><span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{icon} {item.event}</span><span style={{ fontSize: 11, color: COLORS.textFaint }}>{time}</span></div>
+                                <div style={{ color: COLORS.textSoft, fontSize: 11 }}>{item.details}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Card>
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy status and details */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                  <Card style={{ display: 'flex', alignItems: 'center', justifycontent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ 
+                        width: 48, height: 48, borderRadius: '50%', background: googleConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: googleConnected ? '#10b981' : '#ef4444', fontSize: 20,
+                        border: `1px solid ${googleConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
+                      }}>
+                        {checkingGoogle ? <div style={{ width: 20, height: 20, border: '2px solid transparent', borderTop: '2px solid currentColor', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <i className={googleConnected ? "fa-solid fa-circle-check" : "fa-solid fa-circle-xmark"}></i>}
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>{checkingGoogle ? 'Verificando status...' : googleConnected ? 'Google Drive Conectado' : 'Google Drive Desconectado'}</h4>
+                        <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>{googleConnected ? 'Acesso de leitura ativo na VPS.' : 'Nenhuma conta autorizada na VPS.'}</p>
+                      </div>
+                    </div>
+                    {!checkingGoogle && (
+                      <button onClick={async () => {
+                        if (googleConnected) {
+                          if (confirm('Desconectar a conta do Google Drive da VPS?')) {
+                            try {
+                              const res = await fetch('/api/google/disconnect', { method: 'POST' });
+                              if (res.ok) { alert('Google Drive desconectado.'); checkGoogleStatus(); }
+                            } catch (e) { alert('Erro ao desconectar.'); }
+                          }
+                        } else { window.location.href = '/api/google/auth'; }
+                      }} style={{ background: googleConnected ? 'rgba(239, 68, 68, 0.1)' : COLORS.gold, border: googleConnected ? '1px solid rgba(239, 68, 68, 0.2)' : 'none', color: googleConnected ? '#ef4444' : COLORS.bg, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{googleConnected ? 'Desconectar' : 'Conectar Conta'}</button>
+                    )}
+                  </Card>
+
+                  <Card>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><i className="fa-brands fa-facebook"></i> Meta Ads Marketing</h4>
+                    <ul style={{ listStyle: 'none', fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 6, color: COLORS.textSoft }}>
+                      <li>Ad Account ID: <span style={{ color: COLORS.teal, fontWeight: 'bold' }}>{mappedMetaAccountId || 'act_77728399102 (Demo)'}</span></li>
+                      <li>API Version: <span style={{ fontWeight: 'bold' }}>v25.0</span></li>
+                      <li>Status: <span style={{ padding: '2px 6px', fontSize: 11, background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderRadius: 4, marginLeft: 6 }}>Ativo (Server-Side)</span></li>
+                    </ul>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {activeView === 'view-ai' && (
+              <div id="view-ai" className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <style dangerouslySetInnerHTML={{__html: `
+                  .urgency-card {
+                    padding: 15px;
+                    margin-bottom: 10px;
+                    border-radius: 8px;
+                    background: ${COLORS.surface};
+                    border: 1px solid ${COLORS.border};
+                    border-left-width: 4px;
+                    border-left-style: solid;
+                    color: #fff;
+                  }
+                  .urgency-card.critical {
+                    border-left-color: rgb(239, 68, 68) !important;
+                  }
+                  .urgency-card.warning {
+                    border-left-color: rgb(245, 158, 11) !important;
+                  }
+                  .urgency-card.opportunity {
+                    border-left-color: rgb(16, 185, 129) !important;
+                  }
+                  .chat-bubble {
+                    padding: 10px 14px;
+                    border-radius: 12px;
+                    margin-bottom: 10px;
+                    max-width: 80%;
+                    word-wrap: break-word;
+                  }
+                  .chat-bubble.user {
+                    background: ${COLORS.gold};
+                    color: ${COLORS.bg};
+                    align-self: flex-end;
+                    margin-left: auto;
+                  }
+                  .chat-bubble.bot {
+                    background: rgba(255, 255, 255, 0.08);
+                    color: #fff;
+                    align-self: flex-start;
+                    margin-right: auto;
+                  }
+                `}} />
+
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: COLORS.text }}>Insights de IA & Diagnóstico</h2>
+                  <p style={{ fontSize: 13, color: COLORS.textSoft }}>Análise automatizada de campanhas com Claude + MCP.</p>
+                </div>
+
+                {/* Banners */}
+                {selectedClient === 'Tratores Connect' && (
+                  <div id="ai-mapping-banner" style={{ padding: 15, borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b', fontWeight: 500 }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 8 }}></i>
+                    Mapeie a conta de anúncio correspondente nas configurações para habilitar o diagnóstico por IA.
+                  </div>
+                )}
+
+                {aiError && (
+                  <div id="ai-error-banner" style={{ padding: 15, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', fontWeight: 500 }}>
+                    <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>
+                    {aiError}
+                  </div>
+                )}
+
+                {/* Configuration Card */}
+                <Card>
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label htmlFor="select-ai-focus" style={{ display: 'block', fontSize: 13, color: COLORS.textSoft, marginBottom: 8, fontWeight: 600 }}>Foco do Diagnóstico</label>
+                      <select 
+                        id="select-ai-focus" 
+                        value={aiFocus} 
+                        onChange={e => setAiFocus(e.target.value)}
+                        style={{ width: '100%', padding: '10px 14px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', outline: 'none' }}
+                      >
+                        <option value="cpl">Custo por Lead (CPL)</option>
+                        <option value="roas">Retorno sobre Investimento (ROAS)</option>
+                        <option value="reach">Alcance & Impressões</option>
+                        <option value="spend">Volume de Gastos</option>
+                      </select>
+                    </div>
+                    <div>
+                      <button 
+                        id="btn-generate-insights" 
+                        disabled={selectedClient === 'Tratores Connect' || aiLoading}
+                        onClick={generateAiInsights}
+                        className="btn btn-primary" 
+                        style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', padding: '12px 24px', borderRadius: 8, fontWeight: 600, cursor: selectedClient === 'Tratores Connect' || aiLoading ? 'not-allowed' : 'pointer', opacity: selectedClient === 'Tratores Connect' || aiLoading ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-wand-magic-sparkles"></i> Gerar Insights
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Loading Container */}
+                {aiLoading && (
+                  <Card style={{ textAlign: 'center', padding: '30px 20px' }}>
+                    <div id="ai-loading-spinner" className="spinner" style={{ margin: '0 auto 15px auto', width: 40, height: 40, border: '4px solid rgba(255,255,255,0.1)', borderTop: '4px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                    <p id="ai-progress-text" style={{ fontSize: 14, color: '#fff', fontWeight: 600, margin: 0 }}>{aiProgressText}</p>
+                  </Card>
+                )}
+
+                {/* Results Container */}
+                {aiInsights && !aiLoading && (
+                  <Card>
+                    <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 15 }}>Diagnóstico e Recomendações</h3>
+
+                    {/* Urgency Cards (Shown unless empty sheet data or unstructured) */}
+                    {aiInsights !== 'Dados insuficientes no Google Sheets para diagnóstico de IA' && 
+                     !aiInsights.includes('Crucial insight') && (
+                      <div id="ai-urgency-cards-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 15, marginBottom: 20 }}>
+                        <div className="urgency-card critical" id="card-critical">
+                          <h4 style={{ color: 'rgb(239, 68, 68)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Crítico</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            {aiInsights.includes('CPL Mismatch') 
+                              ? "CPL Mismatch: A campanha 'Lançamento Soja 2026' registrou CPL de R$ 42,50 no Meta, mas apenas 5 leads reais no CRM."
+                              : "A campanha 'Lançamento Soja 2026' registrou CPL elevado."}
+                          </p>
+                        </div>
+                        <div className="urgency-card warning" id="card-warning">
+                          <h4 style={{ color: 'rgb(245, 158, 11)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Atenção</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            Foco em 'Oferta Sementes Milho' está abaixo do esperado.
+                          </p>
+                        </div>
+                        <div className="urgency-card opportunity" id="card-opportunity">
+                          <h4 style={{ color: 'rgb(16, 185, 129)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Oportunidade</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            {aiInsights.includes('CPL Mismatch') 
+                              ? "Recomendação: Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'."
+                              : "Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Diagnosis Report */}
+                    {aiInsights !== 'Dados insuficientes no Google Sheets para diagnóstico de IA' && 
+                     !aiInsights.includes('Crucial insight') && (
+                      <div id="ai-diagnosis-report" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        {aiInsights}
+                      </div>
+                    )}
+
+                    {/* Fallback for Empty Sheet */}
+                    {aiInsights === 'Dados insuficientes no Google Sheets para diagnóstico de IA' && (
+                      <div id="ai-diagnosis-report" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        Dados insuficientes no Google Sheets para diagnóstico de IA
+                      </div>
+                    )}
+
+                    {/* Unstructured Fallback Container */}
+                    {aiInsights.includes('Crucial insight') && (
+                      <div id="ai-insights-fallback-container" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        {aiInsights}
+                      </div>
+                    )}
+                  </Card>
+                )}
+
+                {/* Chat Container */}
+                <Card style={{ display: 'flex', flexDirection: 'column', height: 400 }}>
+                  <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-comments"></i> Pergunte ao Claude
+                  </h3>
+
+                  {/* Chat Log */}
+                  <div id="ai-chat-log" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 15, paddingRight: 5 }}>
+                    {aiChatLog.map((msg, idx) => (
+                      <div key={idx} className={`chat-bubble ${msg.role}`}>
+                        {msg.text}
+                      </div>
+                    ))}
+                    
+                    {/* Chat Loading Bubble */}
+                    {chatLoading && (
+                      <div id="chat-loading-bubble" className="chat-bubble bot" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.1)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                        <span>Claude está pensando...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Input Box */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input 
+                      type="text" 
+                      id="ai-chat-input" 
+                      value={aiChatInput}
+                      onChange={e => setAiChatInput(e.target.value)}
+                      onKeyPress={e => { if (e.key === 'Enter') sendAiChatMessage(); }}
+                      placeholder="Digite sua pergunta aqui..." 
+                      style={{ flex: 1, padding: '10px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${COLORS.border}`, color: '#fff', outline: 'none', fontSize: 14 }}
+                    />
+                    <button 
+                      id="btn-send-ai-chat" 
+                      onClick={sendAiChatMessage}
+                      className="btn btn-primary" 
+                      style={{ padding: '0 20px', background: COLORS.gold, color: COLORS.bg, border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                </Card>
+              </div>
+            )}
+            {/* Lightbox Modal */}
+          {lightboxImage && (
+            <div id="modal-lightbox" className="modal-overlay active" onClick={() => setLightboxImage(null)} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)' }}>
+              <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <button id="btn-close-lightbox" onClick={() => setLightboxImage(null)} style={{ position: 'absolute', top: -40, right: 0, background: 'none', border: 'none', color: '#fff', fontSize: 32, cursor: 'pointer' }}><i className="fa-solid fa-xmark"></i></button>
+                <img className="lightbox-preview-img" src={lightboxImage} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, boxShadow: '0 0 20px rgba(0,0,0,0.5)' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Settings Modal */}
+          {isSettingsOpen && (
+            <div id="modal-settings" className="modal-overlay active" style={{ pointerEvents: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.75)' }}>
+              <div className="modal-card modal-lg glass-panel animate-fade-in" style={{ pointerEvents: 'auto', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 24, maxWidth: 600, width: '90%' }}>
+                <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ color: '#fff', fontSize: 16 }}>Configuração do ID do Pixel</h3>
+                  <button onClick={() => { setIsSettingsOpen(false); setPixelIdError(''); setPixelToastMessage(''); }} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer' }}><i className="fa-solid fa-xmark"></i></button>
+                </div>
+                <div style={{ position: 'relative', marginBottom: 16 }}>
+                  <input 
+                    type="text" 
+                    id="input-pixel-id" 
+                    value={pixelIdInput} 
+                    onChange={(e) => setPixelIdInput(e.target.value)} 
+                    placeholder="Ex: 1234567890" 
+                    className={pixelIdError ? 'error border-red' : ''}
+                    style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${pixelIdError ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: '#fff', outline: 'none' }}
+                  />
+                  {pixelIdError && <div id="pixel-id-validation-error" style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{pixelIdError}</div>}
+                </div>
+                <button 
+                  id="btn-save-settings" 
+                  onClick={() => {
+                    const val = pixelIdInput.trim();
+                    setPixelIdError('');
+                    setPixelToastMessage('');
+                    if (val === '') {
+                      setPixelIdError('Insira um ID de Pixel válido');
+                      return;
+                    }
+                    if (!/^\d+$/.test(val)) {
+                      setPixelToastMessage('ID do Pixel precisa ser apenas números');
+                      return;
+                    }
+                    setPixelId(val);
+                    setIsSettingsOpen(false);
+                  }} 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: 12, background: COLORS.gold, color: COLORS.bg, border: 'none', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
+                >
+                  Salvar ID
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Toast Message */}
+          {pixelToastMessage && (
+            <div id="pixel-error-toast" className="error-toast" style={{ display: 'flex', position: 'fixed', bottom: 20, right: 20, background: '#ef4444', color: 'white', padding: '12px 24px', borderRadius: 8, zIndex: 99999, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontWeight: 600, fontSize: 13, alignItems: 'center', gap: 10 }}>
+              <i className="fa-solid fa-circle-exclamation"></i>
+              <span className="toast-message">{pixelToastMessage}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Renderiza a aplicação React no elemento root
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Dashboard />);
+  

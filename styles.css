@@ -1093,12 +1093,14 @@ body {
   align-items: center;
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
   transition: var(--transition-smooth);
 }
 
 .modal-overlay.active {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 
 .modal-card {
@@ -1203,13 +1205,13 @@ body {
 
 /* 10. ANIMAÇÕES */
 .animate-fade-in {
-  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 1 !important;
+  animation: none !important;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--delay) * 0.1s);
-  opacity: 0;
+  opacity: 1 !important;
+  animation: none !important;
 }
 
 @keyframes fadeIn {
@@ -1716,3 +1718,267 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ==========================================================================
+   SIDEBAR LAYOUT STYLES
+   ========================================================================== */
+
+.dashboard-layout {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 80px;
+  min-width: 80px;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px 16px;
+  transition: var(--transition-smooth);
+  border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
+  background: rgba(13, 16, 37, 0.75);
+  border-right: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.sidebar.expanded {
+  width: 260px;
+  min-width: 260px;
+}
+
+/* Sidebar Header */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  position: relative;
+  width: 100%;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-brand-text {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  display: none;
+}
+
+.sidebar.expanded .sidebar-brand-text {
+  opacity: 1;
+  pointer-events: auto;
+  display: inline-block;
+}
+
+.sidebar-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+.sidebar.expanded .sidebar-toggle-btn {
+  position: relative;
+  right: 0;
+  transform: none;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+/* Sidebar Navigation */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-grow: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-md);
+  color: var(--text-secondary);
+  font-family: var(--font-main);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  width: 100%;
+  text-align: left;
+  overflow: hidden;
+}
+
+.nav-item i {
+  font-size: 1.2rem;
+  min-width: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-label {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sidebar.expanded .nav-label {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+}
+
+.nav-item.active {
+  background: rgba(0, 242, 254, 0.08);
+  border: 1px solid rgba(0, 242, 254, 0.15);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: inset 0 0 8px rgba(0, 242, 254, 0.05);
+}
+
+/* Sidebar Footer & Profile */
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 16px;
+  overflow: hidden;
+}
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px;
+  border-radius: 30px;
+  width: 100%;
+}
+
+.sidebar-user-details {
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar.expanded .sidebar-user-details {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Main Container Area */
+.main-container {
+  flex-grow: 1;
+  margin-left: 80px;
+  transition: var(--transition-smooth);
+  width: calc(100% - 80px);
+}
+
+.dashboard-layout.sidebar-expanded .main-container {
+  margin-left: 260px;
+  width: calc(100% - 260px);
+}
+
+/* Views display logic */
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  opacity: 1 !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Delta Badge Styles */
+.delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.delta-badge.text-success {
+  color: #10b981 !important;
+  background: rgba(16, 185, 129, 0.1);
+}
+.delta-badge.text-danger {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.1);
+}
+.delta-badge.text-muted {
+  color: #6b7280 !important;
+  background: rgba(107, 114, 128, 0.1);
+}
+
+/* Draggable available cards */
+.draggable-card {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  font-size: 0.8rem;
+  transition: var(--transition-smooth);
+}
+.draggable-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--primary);
+}
+.draggable-card:active {
+  cursor: grabbing;
+}
+
+

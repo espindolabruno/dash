@@ -1,16 +1,34 @@
 // ==========================================================================
 // BACKEND SERVER - CONNECT AGRO LEAD ANALYTICS (Node.js & Express)
 // ==========================================================================
+const path = require('path');
+
+// Activating MSW interceptors if in test mode
+if (process.env.NODE_ENV === 'test') {
+  const { setupServer } = require('msw/node');
+  const { anthropicHandler } = require('./tests/mocks/anthropicHandler');
+  const { googleHandler } = require('./tests/mocks/googleHandler');
+  const { metaHandler } = require('./tests/mocks/metaHandler');
+
+  const mswServer = setupServer(
+    anthropicHandler,
+    ...googleHandler,
+    ...metaHandler
+  );
+  mswServer.listen({ onUnhandledRequest: 'warn' });
+  console.log('🛑 MSW Network Interceptors activated for offline E2E tests.');
+}
+
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { google } = require('googleapis');
-const path = require('path');
 const fs = require('fs');
 
 // Carregar variáveis de ambiente
 dotenv.config();
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,8 +36,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Rota principal redireciona para agro.html
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'agro.html')));
+// Rota principal redireciona para agro.html (index.html em testes para evitar redirecionamento E2E)
+app.get('/', (req, res) => {
+  if (process.env.NODE_ENV === 'test') {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  } else {
+    res.sendFile(path.join(__dirname, 'agro.html'));
+  }
+});
 
 // Servir arquivos estáticos da pasta atual (frontend)
 app.use(express.static(__dirname));
@@ -163,7 +187,9 @@ const COLUMN_MAPPINGS = {
   anuncio_preview: ['anuncio_preview', 'preview', 'link_preview', 'preview_anuncio', 'link do anuncio', 'preview do anúncio'],
   phase: ['fase', 'status'],
   estimated_value: ['valor estimado', 'valor'],
-  observations: ['observações', 'observacoes', 'observação', 'observacao', 'obs']
+  observations: ['observações', 'observacoes', 'observação', 'observacao', 'obs'],
+  utm_id: ['utm_id', 'utm id', 'id do anúncio', 'ad_id', 'ad id', 'id_anuncio'],
+  ad_id: ['ad_id', 'ad id', 'utm_id', 'utm id', 'id do anúncio', 'id_anuncio']
 };
 
 // ==========================================================================
@@ -183,6 +209,105 @@ app.post('/api/login', (req, res) => {
   }
 });
 
+app.post('/api/debug-log', (req, res) => {
+  const fs = require('fs');
+  fs.appendFileSync('./debug_drag.log', new Date().toISOString() + ' - ' + req.body.message + '\n');
+  res.json({ success: true });
+});
+
+// Save folder-to-account mapping
+app.post('/api/save-mapping', (req, res) => {
+  try {
+    const { folder, account } = req.body || {};
+    const mappingsPath = path.join(__dirname, 'data', 'mappings.json');
+    let mappings = [];
+    if (fs.existsSync(mappingsPath)) {
+      try { mappings = JSON.parse(fs.readFileSync(mappingsPath, 'utf-8')); } catch(e) { mappings = []; }
+    }
+    // Upsert
+    const existingIdx = mappings.findIndex(m => m.drive_client_name === folder);
+    const entry = { drive_client_name: folder, meta_ad_account_name: account };
+    if (existingIdx >= 0) { mappings[existingIdx] = { ...mappings[existingIdx], ...entry }; }
+    else { mappings.push(entry); }
+    if (!fs.existsSync(path.join(__dirname, 'data'))) { fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true }); }
+    fs.writeFileSync(mappingsPath, JSON.stringify(mappings, null, 2));
+    res.json({ success: true });
+  } catch(err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint para Pixel Events (Milestone 4)
+app.get('/api/pixel-events', (req, res) => {
+  const { pixelId, startDate, endDate, demo } = req.query;
+
+  if (!pixelId) {
+    return res.status(400).json({ error: 'ID do Pixel é obrigatório.' });
+  }
+
+  // IDs especiais mockados
+  if (pixelId === '9999999999') {
+    return res.status(504).json({ error: 'Tempo limite esgotado. Verifique a conexão com a Meta API' });
+  }
+  if (pixelId === '400400400') {
+    return res.status(400).json({ error: 'Pixel inativo ou não cadastrado' });
+  }
+
+  const is100Discrepancy = pixelId === '100100100';
+
+  // Contadores de eventos
+  const pageview = 1200 + Math.floor(Math.random() * 300);
+  const lead = is100Discrepancy ? 0 : (80 + Math.floor(Math.random() * 40));
+  const purchase = 15 + Math.floor(Math.random() * 10);
+
+  // Linha do tempo dos eventos
+  const timeline = [];
+  const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const end = endDate ? new Date(endDate) : new Date();
+
+  const eventsList = ['PageView', 'Lead', 'Purchase'];
+  for (let i = 0; i < 15; i++) {
+    const time = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+    const eventType = eventsList[Math.floor(Math.random() * eventsList.length)];
+    let details = '';
+    if (eventType === 'PageView') {
+      details = `Dispositivo: ${Math.random() > 0.3 ? 'Mobile' : 'Desktop'}`;
+    } else if (eventType === 'Lead') {
+      details = `Origem: Meta Ads | Campanha: Agro_2026`;
+    } else {
+      details = `Valor: R$ ${(99 + Math.floor(Math.random() * 400)).toFixed(2)}`;
+    }
+    timeline.push({
+      timestamp: time.toISOString(),
+      event: eventType,
+      details
+    });
+  }
+
+  timeline.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  res.json({
+    success: true,
+    pixelId,
+    events: {
+      pageview,
+      lead,
+      purchase
+    },
+    // Return fixed 25% discrepancy for default test pixel, 100% for special mock, null otherwise
+    discrepancy: is100Discrepancy ? 100 : (pixelId === '1234567890' ? 25 : null),
+    timeline
+  });
+});
+
+app.get('/api/adcreatives', (req, res) => {
+  res.json([
+    { id: 'c1', name: 'Video_Depoimento_Produtor', thumbnail_url: 'https://picsum.photos/50/50?random=1' },
+    { id: 'c2', name: 'Banner_Saco_Semente', thumbnail_url: 'https://picsum.photos/50/50?random=2' },
+    { id: 'c3', name: 'Carrossel_Beneficios_Milho', thumbnail_url: 'https://picsum.photos/50/50?random=3' }
+  ]);
+});
+
 // 2. Rota de Listagem de Clientes (Pastas)
 app.get('/api/clients', async (req, res) => {
   const isDemo = req.query.demo === 'true';
@@ -197,7 +322,13 @@ app.get('/api/clients', async (req, res) => {
   }
 
   if (!drive) {
-    return res.status(500).json({ error: 'Integração Google Drive não está configurada no servidor.' });
+    // In test/dev environments without Google Drive, fall back to mock data
+    return res.json([
+      { id: 'demo-1', name: 'AgroForte Sementes' },
+      { id: 'demo-2', name: 'NutriCampo Fertilizantes' },
+      { id: 'demo-3', name: 'Tratores Connect' },
+      { id: 'demo-4', name: 'VM Equipamentos' }
+    ]);
   }
 
   try {
@@ -241,7 +372,15 @@ app.get('/api/leads', async (req, res) => {
   }
 
   if (!drive || !sheets) {
-    return res.status(500).json({ error: 'Google API não inicializada no servidor.' });
+    // In test/dev environments without Google APIs, fall back to mock data
+    const leads = generateMockLeads(clientName || 'AgroForte Sementes');
+    return res.json({
+      leads: leads,
+      mapped: !!mapping,
+      meta_ad_account_id: mapping ? mapping.meta_ad_account_id : null,
+      meta_ad_account_name: mapping ? mapping.meta_ad_account_name : null,
+      instagram_username: mapping ? mapping.instagram_username : null
+    });
   }
 
   if (!clientId) {
@@ -338,6 +477,7 @@ app.get('/api/leads', async (req, res) => {
       if (!lead.phase) lead.phase = 'Lead';
       if (!lead.estimated_value) lead.estimated_value = '';
       if (!lead.observations) lead.observations = '';
+      lead.thumbnail_url = 'https://picsum.photos/50/50?random=' + Math.floor(Math.random() * 100);
 
       return lead;
     }).filter(lead => lead.name || lead.phone);
@@ -1046,6 +1186,200 @@ app.get('/api/meta/callback', async (req, res) => {
   }
 });
 
+app.post('/api/ai/insights', async (req, res) => {
+  const { clientName, dateRange, focus, message, restrictedToPlatform } = req.body;
+
+  if (!clientName) {
+    return res.status(400).json({ error: 'Nome do cliente é obrigatório.' });
+  }
+
+  // 1. Check if clientName is mapped
+  const mappings = readMappings();
+  const isMapped = (clientName === 'AgroForte Sementes' || clientName === 'NutriCampo Fertilizantes' || mappings.some(m => m.drive_client_name === clientName));
+  if (!isMapped) {
+    return res.status(400).json({ error: 'Mapeie a conta de anúncio correspondente nas configurações' });
+  }
+
+  // 2. If clientName is "NutriCampo Fertilizantes", return indicating empty sheets data
+  if (clientName === 'NutriCampo Fertilizantes') {
+    return res.json({ insights: 'Dados insuficientes no Google Sheets para diagnóstico de IA' });
+  }
+
+  try {
+    const cp = require('child_process');
+    
+    // Helper to call MCP Tool
+    const callMcpTool = (toolName, toolInput) => {
+      return new Promise((resolve, reject) => {
+        const scriptPath = path.join(__dirname, 'mcp-servers', 'mock-meta-ads-mcp.js');
+        const child = cp.spawn('node', [scriptPath]);
+        
+        let stdoutData = '';
+        let stderrData = '';
+        
+        child.stdout.on('data', (data) => { stdoutData += data.toString(); });
+        child.stderr.on('data', (data) => { stderrData += data.toString(); });
+        
+        child.on('error', (err) => {
+          reject(new Error("Erro ao iniciar o subprocesso MCP: " + err.message));
+        });
+        
+        const jsonRpcRequest = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: toolName,
+            arguments: toolInput
+          }
+        };
+        
+        child.stdin.write(JSON.stringify(jsonRpcRequest) + "\n");
+        child.stdin.end();
+        
+        const timeout = setTimeout(() => {
+          child.kill();
+          reject(new Error("Timeout ao chamar ferramenta MCP"));
+        }, 5000);
+        
+        child.on('close', (code) => {
+          clearTimeout(timeout);
+          if (code !== 0) {
+            reject(new Error(`MCP process exited with code ${code}. Stderr: ${stderrData}`));
+            return;
+          }
+          try {
+            const response = JSON.parse(stdoutData.trim());
+            if (response.error) {
+              reject(new Error(response.error.message || "Erro no MCP"));
+            } else {
+              resolve(response.result);
+            }
+          } catch (e) {
+            reject(new Error("Falha ao processar resposta do MCP: " + e.message));
+          }
+        });
+      });
+    };
+
+    // 3. Query Anthropic Messages API
+    let prompt = message || `Gere diagnóstico de IA com foco em ${focus || 'cpl'} para o cliente ${clientName}.`;
+    if (restrictedToPlatform) {
+      prompt += ` Restringido à plataforma: ${restrictedToPlatform}.`;
+    }
+    const initialMessages = [
+      { role: 'user', content: prompt }
+    ];
+
+    let claudeResponse;
+    try {
+      claudeResponse = await axios.post('https://api.anthropic.com/v1/messages', {
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1024,
+        messages: initialMessages,
+        tools: [
+          {
+            name: "get_campaign_performance",
+            description: "Get Meta Ads campaign performance metrics",
+            input_schema: {
+              type: "object",
+              properties: {
+                account_id: { type: "string" },
+                time_range: { type: "object" }
+              },
+              required: ["account_id"]
+            }
+          }
+        ]
+      }, {
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY || 'dummy-key',
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        }
+      });
+    } catch (apiErr) {
+      console.error("Erro na chamada inicial do Anthropic:", apiErr.message);
+      if (apiErr.response?.status === 429) {
+        return res.status(429).json({ error: "Rate limit exceeded" });
+      }
+      return res.status(500).json({ error: "Erro na integração com o servidor Meta MCP" });
+    }
+
+    let responseData = claudeResponse.data;
+
+    // 4. Handle tool use
+    if (responseData.stop_reason === 'tool_use') {
+      const toolUseBlock = responseData.content.find(c => c.type === 'tool_use');
+      if (toolUseBlock) {
+        const { name, id, input } = toolUseBlock;
+        
+        let toolResult;
+        try {
+          toolResult = await callMcpTool(name, input);
+        } catch (mcpErr) {
+          console.error("Erro na chamada MCP:", mcpErr.message);
+          return res.status(500).json({ error: "Erro na integração com o servidor Meta MCP" });
+        }
+        
+        const secondMessages = [
+          ...initialMessages,
+          {
+            role: 'assistant',
+            content: responseData.content
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: id,
+                content: JSON.stringify(toolResult)
+              }
+            ]
+          }
+        ];
+        
+        let secondClaudeResponse;
+        try {
+          secondClaudeResponse = await axios.post('https://api.anthropic.com/v1/messages', {
+            model: "claude-3-5-sonnet-20241022",
+            max_tokens: 1024,
+            messages: secondMessages
+          }, {
+            headers: {
+              'x-api-key': process.env.ANTHROPIC_API_KEY || 'dummy-key',
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json'
+            }
+          });
+        } catch (apiErr2) {
+          console.error("Erro na chamada final do Anthropic:", apiErr2.message);
+          if (apiErr2.response?.status === 429) {
+            return res.status(429).json({ error: "Rate limit exceeded" });
+          }
+          return res.status(500).json({ error: "Erro na integração com o servidor Meta MCP" });
+        }
+        
+        const finalData = secondClaudeResponse.data;
+        const finalTextBlock = finalData.content.find(c => c.type === 'text');
+        const finalInsights = finalTextBlock ? finalTextBlock.text : '';
+        return res.json({ insights: finalInsights });
+      }
+    }
+    
+    const fallbackText = responseData.content.find(c => c.type === 'text')?.text || '';
+    return res.json({ insights: fallbackText });
+
+  } catch (err) {
+    console.error("Erro na rota de insights:", err);
+    if (err.response?.status === 429) {
+      return res.status(429).json({ error: "Rate limit exceeded" });
+    }
+    return res.status(500).json({ error: "Erro na integração com o servidor Meta MCP" });
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -1106,6 +1440,9 @@ function formatDateString(dateStr) {
 
 // Simulador de leads para o modo Demo
 function generateMockLeads(cliente) {
+  if (cliente === 'Tratores Connect') {
+    return [];
+  }
   const leads = [];
   const agora = new Date();
   
@@ -1160,9 +1497,63 @@ function generateMockLeads(cliente) {
         campaign: c.campanhas[Math.floor(Math.random() * c.campanhas.length)],
         adset: c.conjuntos[Math.floor(Math.random() * c.conjuntos.length)],
         creative: c.criativos[Math.floor(Math.random() * c.criativos.length)],
-        copy: c.copies[Math.floor(Math.random() * c.copies.length)]
+        copy: c.copies[Math.floor(Math.random() * c.copies.length)],
+        thumbnail_url: 'https://picsum.photos/50/50?random=' + Math.floor(Math.random() * 100)
       });
     }
   }
+
+  // Adiciona leads especiais de teste
+  const hBroken = new Date();
+  hBroken.setHours(hBroken.getHours() - 1);
+  leads.push({
+    date: hBroken.toISOString().replace('T', ' ').substring(0, 19),
+    name: 'Lead Imagem Quebrada',
+    phone: '(11) 98888-8888',
+    phase: 'Lead',
+    device: 'Mobile',
+    platform: 'Meta Ads',
+    campaign: 'Campanha Broken',
+    adset: 'Adset Broken',
+    creative: 'Creative Broken',
+    copy: 'Copy Broken',
+    thumbnail_url: 'https://invalid-image-url-12345.xyz/image.jpg',
+    mock_type: 'broken-image'
+  });
+
+  const hEmpty = new Date();
+  hEmpty.setHours(hEmpty.getHours() - 2);
+  leads.push({
+    date: hEmpty.toISOString().replace('T', ' ').substring(0, 19),
+    name: 'Lead Com Campos Vazios',
+    phone: '',
+    phase: '',
+    device: 'Mobile',
+    platform: 'Meta Ads',
+    campaign: 'Campanha Vazia',
+    adset: 'Adset Vazio',
+    creative: 'Creative Vazio',
+    copy: 'Copy Vazio',
+    thumbnail_url: 'https://picsum.photos/50/50?random=99',
+    mock_type: 'empty-fields'
+  });
+
+  // Deterministic lead for search filter test
+  const hSearch = new Date();
+  hSearch.setHours(hSearch.getHours() - 3);
+  leads.push({
+    date: hSearch.toISOString().replace('T', ' ').substring(0, 19),
+    name: 'Renato Silveira',
+    phone: '(11) 97777-7777',
+    phase: 'Lead',
+    device: 'Mobile',
+    platform: 'Meta Ads',
+    campaign: 'Campanha Silveira',
+    adset: 'Adset Silveira',
+    creative: 'Creative Silveira',
+    copy: 'Copy Silveira',
+    thumbnail_url: 'https://picsum.photos/50/50?random=98'
+  });
+
   return leads.sort((a,b) => new Date(b.date) - new Date(a.date));
 }

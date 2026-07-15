@@ -13,6 +13,9 @@
   <!-- FontAwesome para Ícones -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
+  <!-- CSS Principal -->
+  <link rel="stylesheet" href="styles.css">
+  
   <!-- React & Recharts via CDN -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -491,6 +494,167 @@
       const [mappedMetaAccountName, setMappedMetaAccountName] = useState(null);
       const [mappedInstagramUsername, setMappedInstagramUsername] = useState(null);
 
+      const [activeView, setActiveView] = useState('view-geral');
+      const [selectedMetaCampaignId, setSelectedMetaCampaignId] = useState(null);
+      const [selectedMetaAdsetId, setSelectedMetaAdsetId] = useState(null);
+      const [selectedMetaAdId, setSelectedMetaAdId] = useState(null);
+      const [explorerLevel, setExplorerLevel] = useState('campaign');
+      const [explorerSearch, setExplorerSearch] = useState('');
+      const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
+        const saved = localStorage.getItem('sidebar_expanded');
+        return saved !== null ? saved === 'true' : window.innerWidth > 768;
+      });
+
+      // Milestone 4 States & Functions
+      const [leadsSearchQuery, setLeadsSearchQuery] = useState('');
+      const [leadsCurrentPage, setLeadsCurrentPage] = useState(1);
+      const [leadsSortDirection, setLeadsSortDirection] = useState('desc');
+      const [lightboxImage, setLightboxImage] = useState(null);
+
+      const [pixelId, setPixelId] = useState('');
+      const [pixelIdInput, setPixelIdInput] = useState('');
+      const [pixelIdError, setPixelIdError] = useState('');
+      const [pixelToastMessage, setPixelToastMessage] = useState('');
+      const [pixelData, setPixelData] = useState(null);
+      const [pixelLoading, setPixelLoading] = useState(false);
+      const [pixelApiError, setPixelApiError] = useState('');
+
+      // Milestone 5 States
+      const [aiFocus, setAiFocus] = useState('cpl');
+      const [aiLoading, setAiLoading] = useState(false);
+      const [aiProgressText, setAiProgressText] = useState('');
+      const [aiInsights, setAiInsights] = useState(null);
+      const [aiError, setAiError] = useState('');
+      const [aiChatLog, setAiChatLog] = useState([
+        { role: 'bot', text: 'Olá! Como posso ajudar você a otimizar suas campanhas hoje?' }
+      ]);
+      const [aiChatInput, setAiChatInput] = useState('');
+      const [chatLoading, setChatLoading] = useState(false);
+
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+      const generateAiInsights = async () => {
+        setAiLoading(true);
+        setAiInsights(null);
+        setAiError('');
+        setAiProgressText('Conectando MCP...');
+
+        let mcpPromise = delay(1000).then(() => {
+          setAiProgressText('Consultando Meta Ads...');
+          return delay(1000);
+        }).then(() => {
+          setAiProgressText('Claude Analisando...');
+          return delay(1000);
+        });
+
+        let fetchPromise = fetch('/api/ai/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: selectedClient,
+            focus: aiFocus
+          })
+        });
+
+        try {
+          const [_, response] = await Promise.all([mcpPromise, fetchPromise]);
+          setAiLoading(false);
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          setAiInsights(data.insights || '');
+        } catch (err) {
+          console.error(err);
+          setAiLoading(false);
+          if (err.message.includes('429') || err.message.toLowerCase().includes('rate limit')) {
+            setAiError("Serviço ocupado no momento. Tente novamente em alguns minutos.");
+          } else {
+            setAiError(err.message || "Erro na integração com o servidor Meta MCP");
+          }
+        }
+      };
+
+      const sendAiChatMessage = async () => {
+        const messageText = aiChatInput.trim();
+        if (!messageText) return;
+
+        setAiChatLog(prev => [...prev, { role: 'user', text: messageText }]);
+        setAiChatInput('');
+        setChatLoading(true);
+
+        try {
+          const response = await fetch('/api/ai/insights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientName: selectedClient,
+              message: messageText
+            })
+          });
+
+          setChatLoading(false);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          setAiChatLog(prev => [...prev, { role: 'bot', text: data.insights || '' }]);
+        } catch (err) {
+          console.error(err);
+          setChatLoading(false);
+          setAiChatLog(prev => [...prev, { role: 'bot', text: "Erro ao se comunicar com a IA. Tente novamente." }]);
+        }
+      };
+
+      const loadPixelEvents = async (pid = pixelId) => {
+        if (!pid) return;
+        setPixelLoading(true);
+        setPixelApiError('');
+        try {
+          const formatDateStr = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          let startStr, endStr;
+          if (startDate && endDate) {
+            startStr = formatDateStr(startDate);
+            endStr = formatDateStr(endDate);
+          } else {
+            const now = new Date();
+            const start = new Date();
+            start.setDate(now.getDate() - 30);
+            startStr = formatDateStr(start);
+            endStr = formatDateStr(now);
+          }
+          const res = await fetch(`/api/pixel-events?pixelId=${pid}&startDate=${startStr}&endDate=${endStr}&demo=${isDemoMode}`);
+          if (res.ok) {
+            const data = await res.json();
+            setPixelData(data);
+          } else {
+            const data = await res.json().catch(() => ({}));
+            setPixelApiError(data.error || 'Erro desconhecido.');
+            setPixelData(null);
+          }
+        } catch (e) {
+          setPixelApiError('Tempo limite esgotado. Verifique a conexão com a Meta API');
+          setPixelData(null);
+        } finally {
+          setPixelLoading(false);
+        }
+      };
+
+      const clearPixelEvents = () => {
+        setPixelData(null);
+        setPixelApiError('');
+      };
+
       // Funções auxiliares para formatação de data
       const formatDateShort = (date) => {
         if (!date) return '';
@@ -667,6 +831,48 @@
         document.addEventListener('click', handleOutsideClick);
         return () => document.removeEventListener('click', handleOutsideClick);
       }, []);
+
+      // Sincroniza abas com hash do browser
+      useEffect(() => {
+        const handleHash = () => {
+          const hash = window.location.hash.substring(1);
+          const validViews = ['geral', 'campaign', 'video', 'leads', 'events', 'ai'];
+          if (hash && validViews.includes(hash)) {
+            setActiveView('view-' + hash);
+          } else {
+            setActiveView('view-geral');
+          }
+          setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+        };
+        window.addEventListener('hashchange', handleHash);
+        handleHash();
+        return () => window.removeEventListener('hashchange', handleHash);
+      }, []);
+
+      // Adiciona navegação por teclado para abas
+      useEffect(() => {
+        const items = document.querySelectorAll('.sidebar-nav .nav-item');
+        const handleKeyDown = (e, index) => {
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = (index + 1) % items.length;
+            items[nextIndex].focus();
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = (index - 1 + items.length) % items.length;
+            items[prevIndex].focus();
+          }
+        };
+        const listeners = [];
+        items.forEach((item, idx) => {
+          const listener = (e) => handleKeyDown(e, idx);
+          item.addEventListener('keydown', listener);
+          listeners.push({ item, listener });
+        });
+        return () => {
+          listeners.forEach(({ item, listener }) => item.removeEventListener('keydown', listener));
+        };
+      }, [activeView]);
 
       // Verifica status de conexão do Google Drive
       const checkGoogleStatus = async () => {
@@ -904,6 +1110,10 @@
 
               return {
                 id: index + 1,
+                name: l.name || '',
+                phone: l.phone || '',
+                date: l.date || '',
+                mock_type: l.mock_type || '',
                 data_dt: l.date || '',
                 _parsedDate: parseDateSafe(l.date),
                 mes: l.date ? l.date.substring(0, 7) : '',
@@ -994,13 +1204,58 @@
             return false;
           }
         }
+        if (leadsSearchQuery) {
+          const q = leadsSearchQuery.toLowerCase();
+          const matchesSearch = 
+            (l.name && l.name.toLowerCase().includes(q)) ||
+            (l.phone && l.phone.includes(q)) ||
+            (l.plataforma && l.plataforma.toLowerCase().includes(q)) ||
+            (l.dispositivo && l.dispositivo.toLowerCase().includes(q)) ||
+            (l.status && l.status.toLowerCase().includes(q));
+          if (!matchesSearch) return false;
+        }
         return (
           (platforms.length === 0 || platforms.includes(l.plataforma)) &&
           (devices.length === 0 || devices.includes(l.dispositivo)) &&
           (statuses.length === 0 || statuses.includes(l.status)) &&
           (months.length === 0 || months.includes(l.mes))
         );
-      }), [leads, platforms, devices, statuses, months, startDate, endDate]);
+      }), [leads, platforms, devices, statuses, months, startDate, endDate, leadsSearchQuery]);
+
+      const sortedLeads = useMemo(() => {
+        const arr = [...filtered];
+        const isAsc = leadsSortDirection === 'asc';
+        arr.sort((a, b) => {
+          const da = new Date(a.date).getTime() || 0;
+          const db = new Date(b.date).getTime() || 0;
+          return isAsc ? da - db : db - da;
+        });
+        return arr;
+      }, [filtered, leadsSortDirection]);
+
+      const paginatedLeads = useMemo(() => {
+        const startIndex = (leadsCurrentPage - 1) * 10;
+        return sortedLeads.slice(startIndex, startIndex + 10);
+      }, [sortedLeads, leadsCurrentPage]);
+
+      const leadsTotalPages = useMemo(() => {
+        return Math.max(1, Math.ceil(sortedLeads.length / 10));
+      }, [sortedLeads]);
+
+      const chartData = useMemo(() => {
+        if (!pixelData || !pixelData.timeline) return [];
+        const grouped = {};
+        pixelData.timeline.forEach(item => {
+          const dateStr = item.timestamp.substring(0, 10);
+          if (!grouped[dateStr]) {
+            grouped[dateStr] = { date: dateStr, PageView: 0, Lead: 0, Purchase: 0 };
+          }
+          if (grouped[dateStr][item.event] !== undefined) {
+            grouped[dateStr][item.event]++;
+          }
+        });
+        return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+      }, [pixelData]);
 
       const resetFilters = () => { 
         setPlatforms([]); 
@@ -1191,7 +1446,72 @@
         return out.slice(0, 4);
       }, [byPlatform, trend, heatmap, campaigns, byDevice]);
 
-      // Handler para logout
+      const metaAuditMetrics = useMemo(() => {
+        if (!metaData) return { spend: 0, reach: 0, clicks: 0, conversas: 0, compras: 0, cpc: 0, crmLeads: 0, crmVendas: 0 };
+        let spend = 0, reach = 0, clicks = 0, conversas = 0, compras = 0;
+        let campaignsList = metaData.campaigns || [];
+        let adsetsList = metaData.adsets || [];
+        let creativesList = metaData.creatives || [];
+        if (selectedMetaCampaignId) {
+          adsetsList = adsetsList.filter(a => a.campaign_id === selectedMetaCampaignId);
+          creativesList = creativesList.filter(c => c.campaign_id === selectedMetaCampaignId);
+        }
+        if (selectedMetaAdsetId) {
+          creativesList = creativesList.filter(c => c.adset_id === selectedMetaAdsetId);
+        }
+        if (selectedMetaAdId) {
+          const adObj = (metaData.creatives || []).find(c => c.ad_id === selectedMetaAdId);
+          if (adObj) { spend = adObj.spend || 0; reach = adObj.reach || 0; clicks = adObj.clicks || 0; conversas = adObj.conversas || 0; compras = adObj.compras || 0; }
+        } else if (selectedMetaAdsetId) {
+          const adsetObj = (metaData.adsets || []).find(a => a.adset_id === selectedMetaAdsetId);
+          if (adsetObj) { spend = adsetObj.spend || 0; reach = adsetObj.reach || 0; clicks = adsetObj.clicks || 0; conversas = adsetObj.conversas || 0; compras = adsetObj.compras || 0; }
+        } else if (selectedMetaCampaignId) {
+          const campObj = (metaData.campaigns || []).find(c => c.campaign_id === selectedMetaCampaignId);
+          if (campObj) { spend = campObj.spend || 0; reach = campObj.reach || 0; clicks = campObj.clicks || 0; conversas = campObj.conversas || 0; compras = campObj.compras || 0; }
+        } else {
+          campaignsList.forEach(c => {
+            spend += c.spend || 0; reach += c.reach || 0; clicks += c.clicks || 0; conversas += c.conversas || 0; compras += c.compras || 0;
+          });
+        }
+        let activeCampaignName = null, activeAdsetName = null, activeAdName = null;
+        if (selectedMetaCampaignId && metaData) {
+          const cObj = (metaData.campaigns || []).find(c => c.campaign_id === selectedMetaCampaignId);
+          if (cObj) activeCampaignName = cObj.campaign_name.toLowerCase();
+        }
+        if (selectedMetaAdsetId && metaData) {
+          const aObj = (metaData.adsets || []).find(a => a.adset_id === selectedMetaAdsetId);
+          if (aObj) activeAdsetName = aObj.adset_name.toLowerCase();
+        }
+        if (selectedMetaAdId && metaData) {
+          const adObj = (metaData.creatives || []).find(c => c.ad_id === selectedMetaAdId);
+          if (adObj) activeAdName = adObj.ad_name.toLowerCase();
+        }
+        let crmLeads = filtered;
+        if (activeCampaignName) crmLeads = crmLeads.filter(l => l.campanha_curta && l.campanha_curta.toLowerCase() === activeCampaignName);
+        if (activeAdsetName) crmLeads = crmLeads.filter(l => l.adset && l.adset.toLowerCase() === activeAdsetName);
+        if (activeAdName) {
+          const cleanAdName = activeAdName.replace(/\s*\[v\d+\]$/, '');
+          crmLeads = crmLeads.filter(l => l.criativo && (l.criativo.toLowerCase() === activeAdName || l.criativo.toLowerCase() === cleanAdName));
+        }
+        const crmLeadsCount = crmLeads.length;
+        const crmVendasCount = crmLeads.filter(l => l.status === 'convertido').length;
+        const cpc = compras > 0 ? spend / compras : 0;
+        return { spend, reach, clicks, conversas, compras, cpc, crmLeads: crmLeadsCount, crmVendas: crmVendasCount };
+      }, [metaData, selectedMetaCampaignId, selectedMetaAdsetId, selectedMetaAdId, filtered]);
+
+      const explorerData = useMemo(() => {
+        if (!metaData) return [];
+        let data = [];
+        if (explorerLevel === 'campaign') data = metaData.campaigns || [];
+        else if (explorerLevel === 'adset') data = metaData.adsets || [];
+        else data = metaData.creatives || [];
+        if (explorerSearch) {
+          const q = explorerSearch.toLowerCase();
+          data = data.filter(d => (d.campaign_name || d.adset_name || d.ad_name || '').toLowerCase().includes(q));
+        }
+        return data;
+      }, [metaData, explorerLevel, explorerSearch]);
+
       const handleLogout = () => {
         sessionStorage.removeItem('session_token');
         window.location.href = '/index.html';
@@ -1210,10 +1530,7 @@
       }
 
       return (
-        <div style={{
-          background: COLORS.bg, minHeight: '100%', padding: '28px 24px', fontFamily: 'var(--font-body)',
-          color: COLORS.text, borderRadius: 16
-        }}>
+        <div className={`dashboard-layout ${isSidebarExpanded ? 'sidebar-expanded' : ''}`} style={{ background: COLORS.bg, minHeight: '100vh', width: '100%' }}>
           <style>{`
             .rows-bg { background-image: repeating-linear-gradient(180deg, rgba(218,167,61,0.03) 0px, rgba(218,167,61,0.03) 1px, transparent 1px, transparent 14px); }
             table.rk th { text-align: left; font-size: 11px; color: ${COLORS.textFaint}; font-weight: 500; padding: 8px 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${COLORS.border}; }
@@ -1224,783 +1541,1173 @@
             @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
           `}</style>
 
-          {/* Header principal com seletores de clientes */}
-          <div className="rows-bg" style={{ padding: '20px 22px', borderRadius: 14, border: `1px solid ${COLORS.border}`, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: COLORS.gold, textTransform: 'uppercase', letterSpacing: 1 }}>Connect · Setor Agro</span>
-                {isDemoMode && <span className="badge-demo">MODO DEMO</span>}
+          {/* SIDEBAR */}
+          <aside className={`sidebar ${isSidebarExpanded ? 'expanded' : 'collapsed'}`} id="sidebar">
+            <div className="sidebar-header">
+              <div className="sidebar-logo">
+                <i className="fa-solid fa-leaf" style={{ color: COLORS.gold }}></i>
+                <span className="sidebar-brand-text">Connect <span style={{ color: COLORS.gold, fontWeight: 'bold' }}>Agro</span></span>
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <i className="fa-solid fa-wheat-awn" style={{ color: COLORS.gold }}></i>
-                <span>Dashboard de leads WhatsApp</span>
-              </div>
-              <div style={{ fontSize: 13, color: COLORS.textSoft, marginTop: 4 }}>
-                {fmtNum(leads.length)} leads no total · anúncios Meta integrados
+              <button onClick={() => {
+                const nextVal = !isSidebarExpanded;
+                setIsSidebarExpanded(nextVal);
+                localStorage.setItem('sidebar_expanded', String(nextVal));
+              }} className="sidebar-toggle-btn">
+                <i className={`fa-solid ${isSidebarExpanded ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
+              </button>
+            </div>
+            
+            <nav className="sidebar-nav">
+              <button className={`nav-item ${activeView === 'view-geral' ? 'active' : ''}`} onClick={() => { setActiveView('view-geral'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-chart-line"></i><span className="nav-label">Geral</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-campaign' ? 'active' : ''}`} onClick={() => { setActiveView('view-campaign'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-bullhorn"></i><span className="nav-label">Campanhas</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-video' ? 'active' : ''}`} onClick={() => { setActiveView('view-video'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-video"></i><span className="nav-label">Vídeos</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-leads' ? 'active' : ''}`} onClick={() => { setActiveView('view-leads'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-users"></i><span className="nav-label">Leads</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-events' ? 'active' : ''}`} onClick={() => { setActiveView('view-events'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }}>
+                <i className="fa-solid fa-bolt"></i><span className="nav-label">Eventos</span>
+              </button>
+              <button className={`nav-item ${activeView === 'view-ai' ? 'active' : ''}`} onClick={() => { setActiveView('view-ai'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }} data-view="view-ai">
+                <i className="fa-solid fa-brain"></i><span className="nav-label">Insights IA</span>
+              </button>
+            </nav>
+            
+            <div className="sidebar-footer">
+              <div className="sidebar-profile">
+                <img src={isDemoMode ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80' : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'} alt="Avatar" />
+                <div className="sidebar-user-details">
+                  <span className="sidebar-user-name">{isDemoMode ? 'Usuário Demonstrativo' : 'Administrador VPS'}</span>
+                  <span className="sidebar-user-email">{isDemoMode ? 'demo@connectagro.com.br' : 'admin@connectagro.com.br'}</span>
+                </div>
               </div>
             </div>
+          </aside>
 
-            {/* Ações e Seleção de Cliente */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="fa-solid fa-briefcase" style={{ color: COLORS.teal, fontSize: 13 }}></i>
-                <select 
-                  value={selectedClient} 
-                  onChange={(e) => {
-                    const c = clients.find(item => item.name === e.target.value);
-                    if (c) {
-                      setSelectedClient(c.name);
-                      setSelectedClientId(c.id);
-                    }
-                  }} 
-                  style={{ background: 'transparent', border: 'none', color: COLORS.text, fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer', paddingRight: 10 }}
-                >
-                  {clients.map(c => <option key={c.id} value={c.name} style={{ background: COLORS.surface }}>{c.name}</option>)}
-                </select>
+          {/* MAIN CONTAINER */}
+          <div className="main-container" onClick={() => {
+            if (window.innerWidth <= 768 && isSidebarExpanded) {
+              setIsSidebarExpanded(false);
+              localStorage.setItem('sidebar_expanded', 'false');
+            }
+          }}>
+            {/* Header principal */}
+            <div className="rows-bg" style={{ padding: '20px 22px', borderRadius: 14, border: `1px solid ${COLORS.border}`, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: COLORS.gold, textTransform: 'uppercase', letterSpacing: 1 }}>Connect · Setor Agro</span>
+                  {isDemoMode && <span className="badge-demo">MODO DEMO</span>}
+                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <i className="fa-solid fa-wheat-awn" style={{ color: COLORS.gold }}></i>
+                  <span>Dashboard de leads WhatsApp</span>
+                </div>
+                <div style={{ fontSize: 13, color: COLORS.textSoft, marginTop: 4 }}>
+                  {fmtNum(leads.length)} leads no total · anúncios Meta integrados
+                </div>
               </div>
 
-              {/* Novo Seletor de Período com Setas e Dropdown */}
-              <div className="date-navigation-wrapper">
-                <button 
-                  disabled={!startDate || !endDate} 
-                  onClick={() => shiftDateRange('prev')} 
-                  className="date-nav-btn" 
-                  title="Período Anterior"
-                >
-                  <i className="fa-solid fa-chevron-left"></i>
-                </button>
-                
-                <div style={{ position: 'relative' }}>
-                  <div 
-                    onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} 
-                    className="date-picker-trigger" 
-                    id="date-picker-trigger"
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-briefcase" style={{ color: COLORS.teal, fontSize: 13 }}></i>
+                  <select 
+                    value={selectedClient} 
+                    onChange={(e) => {
+                      const c = clients.find(item => item.name === e.target.value);
+                      if (c) { setSelectedClient(c.name); setSelectedClientId(c.id); }
+                    }} 
+                    style={{ background: 'transparent', border: 'none', color: COLORS.text, fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer', paddingRight: 10 }}
                   >
-                    <i className="fa-solid fa-calendar-days calendar-icon"></i>
-                    <span>{getDateDisplayLabel()}</span>
-                    <i className="fa-solid fa-chevron-down trigger-arrow"></i>
-                  </div>
-                  
-                  {isDatePickerOpen && (
-                    <div className="date-picker-dropdown" id="date-picker-dropdown">
-                      <div className="date-picker-options">
-                        <button className={`picker-opt-btn ${dateFilter === 'today' ? 'active' : ''}`} onClick={() => { updateDateRange('today'); setIsDatePickerOpen(false); }}>Hoje</button>
-                        <button className={`picker-opt-btn ${dateFilter === 'yesterday' ? 'active' : ''}`} onClick={() => { updateDateRange('yesterday'); setIsDatePickerOpen(false); }}>Ontem</button>
-                        <button className={`picker-opt-btn ${dateFilter === 'hoje_ontem' ? 'active' : ''}`} onClick={() => { updateDateRange('hoje_ontem'); setIsDatePickerOpen(false); }}>Hoje e Ontem</button>
-                        <button className={`picker-opt-btn ${dateFilter === '3' ? 'active' : ''}`} onClick={() => { updateDateRange('3'); setIsDatePickerOpen(false); }}>Últimos 3 dias</button>
-                        <button className={`picker-opt-btn ${dateFilter === '7' ? 'active' : ''}`} onClick={() => { updateDateRange('7'); setIsDatePickerOpen(false); }}>Últimos 7 dias</button>
-                        <button className={`picker-opt-btn ${dateFilter === '15' ? 'active' : ''}`} onClick={() => { updateDateRange('15'); setIsDatePickerOpen(false); }}>Últimos 15 dias</button>
-                        <button className={`picker-opt-btn ${dateFilter === 'ultimo_mes' ? 'active' : ''}`} onClick={() => { updateDateRange('ultimo_mes'); setIsDatePickerOpen(false); }}>Último mês</button>
-                        <button className={`picker-opt-btn ${dateFilter === 'mes_atual' ? 'active' : ''}`} onClick={() => { updateDateRange('mes_atual'); setIsDatePickerOpen(false); }}>Mês atual</button>
-                        <button className={`picker-opt-btn ${dateFilter === 'custom' ? 'active' : ''}`} onClick={() => setDateFilter('custom')}>Personalizado</button>
-                      </div>
-                      
-                      {dateFilter === 'custom' && (
-                        <div className="custom-date-inputs" id="custom-date-inputs-container">
-                          <div className="input-group-row">
-                            <div className="date-input-field">
-                              <label>Início</label>
-                              <input 
-                                type="date" 
-                                value={customStartDate} 
-                                onChange={(e) => setCustomStartDate(e.target.value)} 
-                              />
+                    {clients.map(c => <option key={c.id} value={c.name} style={{ background: COLORS.surface }}>{c.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="date-navigation-wrapper">
+                  <button disabled={!startDate || !endDate} onClick={() => shiftDateRange('prev')} className="date-nav-btn">
+                    <i className="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <div style={{ position: 'relative' }}>
+                    <div onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="date-picker-trigger" id="date-picker-trigger">
+                      <i className="fa-solid fa-calendar-days calendar-icon"></i>
+                      <span>{getDateDisplayLabel()}</span>
+                      <i className="fa-solid fa-chevron-down trigger-arrow"></i>
+                    </div>
+                    {isDatePickerOpen && (
+                      <div className="date-picker-dropdown" id="date-picker-dropdown">
+                        <div className="date-picker-options">
+                          <button className={`picker-opt-btn ${dateFilter === 'today' ? 'active' : ''}`} onClick={() => { updateDateRange('today'); setIsDatePickerOpen(false); }}>Hoje</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'yesterday' ? 'active' : ''}`} onClick={() => { updateDateRange('yesterday'); setIsDatePickerOpen(false); }}>Ontem</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'hoje_ontem' ? 'active' : ''}`} onClick={() => { updateDateRange('hoje_ontem'); setIsDatePickerOpen(false); }}>Hoje e Ontem</button>
+                          <button className={`picker-opt-btn ${dateFilter === '3' ? 'active' : ''}`} onClick={() => { updateDateRange('3'); setIsDatePickerOpen(false); }}>Últimos 3 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === '7' ? 'active' : ''}`} onClick={() => { updateDateRange('7'); setIsDatePickerOpen(false); }}>Últimos 7 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === '15' ? 'active' : ''}`} onClick={() => { updateDateRange('15'); setIsDatePickerOpen(false); }}>Últimos 15 dias</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'ultimo_mes' ? 'active' : ''}`} onClick={() => { updateDateRange('ultimo_mes'); setIsDatePickerOpen(false); }}>Último mês</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'mes_atual' ? 'active' : ''}`} onClick={() => { updateDateRange('mes_atual'); setIsDatePickerOpen(false); }}>Mês atual</button>
+                          <button className={`picker-opt-btn ${dateFilter === 'custom' ? 'active' : ''}`} onClick={() => setDateFilter('custom')}>Personalizado</button>
+                        </div>
+                        {dateFilter === 'custom' && (
+                          <div className="custom-date-inputs">
+                            <div className="input-group-row">
+                              <div className="date-input-field">
+                                <label>Início</label>
+                                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />
+                              </div>
+                              <div className="date-input-field">
+                                <label>Fim</label>
+                                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
+                              </div>
                             </div>
-                            <div className="date-input-field">
-                              <label>Fim</label>
-                              <input 
-                                type="date" 
-                                value={customEndDate} 
-                                onChange={(e) => setCustomEndDate(e.target.value)} 
-                              />
-                            </div>
-                          </div>
-                          <button 
-                            className="btn-apply-date" 
-                            onClick={() => {
+                            <button className="btn-apply-date" onClick={() => {
                               if (customStartDate && customEndDate) {
                                 const startD = new Date(customStartDate + 'T00:00:00');
                                 const endD = new Date(customEndDate + 'T23:59:59');
-                                if (startD > endD) {
-                                  alert('A data de início não pode ser maior que a data de fim.');
-                                  return;
-                                }
-                                const todayEnd = new Date();
-                                todayEnd.setHours(23, 59, 59, 999);
-                                if (endD > todayEnd) {
-                                  alert('A data final não pode ser posterior a hoje.');
-                                  return;
-                                }
-                                updateDateRange('custom', customStartDate, customEndDate);
-                                setIsDatePickerOpen(false);
-                              } else {
-                                alert('Por favor, selecione ambas as datas.');
-                              }
-                            }}
-                          >
-                            Aplicar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                                if (startD > endD) { alert('A data de início não pode ser maior que a data de fim.'); return; }
+                                const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+                                if (endD > todayEnd) { alert('A data final não pode ser posterior a hoje.'); return; }
+                                updateDateRange('custom', customStartDate, customEndDate); setIsDatePickerOpen(false);
+                              } else { alert('Selecione ambas as datas.'); }
+                            }}>Aplicar</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button disabled={!startDate || !endDate} onClick={() => shiftDateRange('next')} className="date-nav-btn">
+                    <i className="fa-solid fa-chevron-right"></i>
+                  </button>
                 </div>
-                
-                <button 
-                  disabled={!startDate || !endDate} 
-                  onClick={() => shiftDateRange('next')} 
-                  className="date-nav-btn" 
-                  title="Próximo Período"
-                >
-                  <i className="fa-solid fa-chevron-right"></i>
+
+                <a href="/index.html" style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, textDecoration: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }} title="Versão clássica">
+                  <i className="fa-solid fa-clock-rotate-left"></i> Versão Antiga
+                </a>
+                <button onClick={() => { setActiveView('view-events'); setSettingsTab('status'); }} style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, fontSize: 12.5, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                  <i className="fa-solid fa-gear"></i> Configurações
+                </button>
+                <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 12.5, padding: '8px 12px', borderRadius: 10, cursor: 'pointer' }}>
+                  <i className="fa-solid fa-right-from-bracket"></i>
                 </button>
               </div>
-
-              {/* Botão para Versão Antiga */}
-              <a href="/index.html" style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, textDecoration: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, transition: 'all 0.2s' }} title="Acessar versão anterior para comparações">
-                <i className="fa-solid fa-clock-rotate-left"></i> Versão Antiga
-              </a>
-
-              {/* Botão de Configurações */}
-              <button 
-                onClick={() => { setIsSettingsOpen(true); setSettingsTab('status'); }}
-                style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, fontSize: 12.5, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, transition: 'all 0.2s' }}
-              >
-                <i className="fa-solid fa-gear"></i> Configurações
-              </button>
-
-              <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: 12.5, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                <i className="fa-solid fa-right-from-bracket"></i>
-              </button>
             </div>
-          </div>
 
-          {error && (
-            <div style={{ background: COLORS.rust + '20', border: `1px solid ${COLORS.rust}55`, color: '#E8A98C', fontSize: 13, padding: '12px 18px', borderRadius: 10, marginBottom: 22 }}>
-              <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>
-              {error}
-            </div>
-          )}
-
-          {/* Banner de Meta Ads Desvinculado */}
-          {!isDemoMode && !mappedMetaAccountId && (
-            <div style={{ 
-              background: 'rgba(216, 167, 61, 0.06)', 
-              border: `1px solid rgba(216, 167, 61, 0.25)`, 
-              borderRadius: 12, 
-              padding: '16px 20px', 
-              marginBottom: 22, 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              flexWrap: 'wrap', 
-              gap: 12,
-              animation: 'fadeIn 0.3s ease-out'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ 
-                  width: 36, height: 36, borderRadius: '50%', background: 'rgba(216, 167, 61, 0.1)', 
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold 
-                }}>
-                  <i className="fa-solid fa-circle-exclamation" style={{ fontSize: 16 }}></i>
-                </div>
-                <div>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>Conta de Anúncios Desvinculada</h4>
-                  <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>Este cliente não possui nenhuma conta de anúncios do Meta Ads vinculada na VPS.</p>
-                </div>
+            {error && (
+              <div style={{ background: COLORS.rust + '20', border: `1px solid ${COLORS.rust}55`, color: '#E8A98C', fontSize: 13, padding: '12px 18px', borderRadius: 10, marginBottom: 22 }}>
+                <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>{error}
               </div>
-              <button 
-                onClick={() => { setIsSettingsOpen(true); setSettingsTab('meta'); }} 
-                style={{ 
-                  background: COLORS.gold, 
-                  color: COLORS.bg, 
-                  border: 'none', 
-                  fontSize: 12.5, 
-                  padding: '8px 16px', 
-                  borderRadius: 8, 
-                  fontWeight: 600, 
-                  cursor: 'pointer', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 6,
-                  transition: 'opacity 0.15s'
-                }}
-              >
-                <i className="fa-solid fa-link"></i> Vincular Conta do Facebook
-              </button>
-            </div>
-          )}
-
-          {/* Filtros */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 22 }}>
-            {['instagram', 'facebook'].map(p => (
-              <Chip key={p} active={platforms.includes(p)} onClick={() => toggle(platforms, setPlatforms, p)}>{PLATFORM_LABEL[p]}</Chip>
-            ))}
-            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
-            {['android', 'ios'].map(d => (
-              <Chip key={d} active={devices.includes(d)} onClick={() => toggle(devices, setDevices, d)} color={COLORS.teal}>{d === 'android' ? 'Android' : 'iOS'}</Chip>
-            ))}
-            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
-            {['lead', 'lead qualificado', 'convertido', 'sem interesse'].map(s => (
-              <Chip key={s} active={statuses.includes(s)} onClick={() => toggle(statuses, setStatuses, s)} color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Chip>
-            ))}
-            <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
-            <select value="" onChange={e => { if (e.target.value) toggle(months, setMonths, e.target.value); }} style={{ background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: 999, color: COLORS.textSoft, fontSize: 12.5, padding: '6px 10px', outline: 'none' }}>
-              <option value="" style={{ background: COLORS.surface }}>+ Mês</option>
-              {allMonths.filter(m => !months.includes(m)).map(m => <option key={m} value={m} style={{ background: COLORS.surface }}>{m}</option>)}
-            </select>
-            {months.map(m => <Chip key={m} active onClick={() => toggle(months, setMonths, m)} color={COLORS.slate}>{m} ×</Chip>)}
-            {hasFilters && (
-              <button onClick={resetFilters} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: COLORS.textFaint, fontSize: 12, cursor: 'pointer', marginLeft: 4 }}>
-                <RotateCcw size={12} /> limpar filtros
-              </button>
             )}
-          </div>
 
-          {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 22 }}>
-            <KPI 
-              icon={Users} 
-              label="Total de conversas" 
-              value={fmtNum(kpis.total)} 
-              sub={metaMetrics ? `${fmtNum(metaMetrics.conversasMeta)} cliques WhatsApp` : 'Sem dados Meta'}
-              accent={COLORS.slate} 
-            />
-            {metaMetrics && (
-              <KPI 
-                icon={DollarSign} 
-                label="Custo por lead" 
-                value={fmtBRL(metaMetrics.cpl)} 
-                sub={`vs ${fmtBRL(metaMetrics.cpc)} custo clique`} 
-                accent={COLORS.rust} 
-              />
-            )}
-            <KPI icon={TrendingUp} label="Taxa de qualificação" value={fmtPct(kpis.taxaQual)} sub="qualificado + convertido" accent={COLORS.teal} />
-            <KPI icon={Target} label="Taxa de conversão" value={fmtPct(kpis.taxaConv)} sub={`${fmtNum(kpis.convertidos)} convertidos`} accent={COLORS.gold} />
-            <KPI icon={DollarSign} label="Receita gerada" value={fmtBRL(kpis.receita)} accent={COLORS.gold} />
-            {metaMetrics ? (
-              <KPI 
-                icon={Smartphone} 
-                label="Total investido" 
-                value={fmtBRL(metaMetrics.spend)} 
-                sub="No período selecionado" 
-                accent={COLORS.gold} 
-              />
-            ) : (
-              <KPI 
-                icon={Smartphone} 
-                label="Total investido" 
-                value="Sem Vínculo" 
-                sub="Não há conta Meta Ads vinculada" 
-                accent={COLORS.rust} 
-              />
-            )}
-          </div>
-
-          {/* Insights automáticos */}
-          {insights.length > 0 && (
-            <Card style={{ marginBottom: 22, background: COLORS.surfaceHi }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <Sparkles size={15} color={COLORS.gold} />
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>Padrões encontrados nos dados filtrados</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-                {insights.map((ins, i) => (
-                  <div key={i} style={{ fontSize: 13, color: COLORS.textSoft, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ color: COLORS.gold, fontFamily: 'var(--font-mono)', fontSize: 12, marginTop: 1 }}>{String(i + 1).padStart(2, '0')}</span>
-                    <span>{ins}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Funil + Trend */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
-            <Card>
-              <SectionTitle eyebrow="Funil" title="Do lead à venda" sub="Leads sem interesse saem do funil" />
-              {funnel.map((f, i) => (
-                <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-                    <span style={{ color: COLORS.textSoft }}>{f.stage}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>
-                      {f.value !== null ? (
-                        `${fmtNum(f.value)} · ${fmtPct(f.pct)}`
-                      ) : (
-                        <span style={{ color: COLORS.textFaint, fontStyle: 'italic', fontSize: 11.5 }}>Meta desvinculado</span>
-                      )}
-                    </span>
-                  </div>
-                  <div style={{ height: 10, background: COLORS.surfaceHi, borderRadius: 6, overflow: 'hidden' }}>
-                    <div style={{ 
-                      height: '100%', 
-                      width: `${Math.min(f.pct, 100)}%`, 
-                      background: ['#3b82f6', COLORS.slate, '#4F8F73', '#a855f7', COLORS.gold][i] || COLORS.slate, 
-                      borderRadius: 6, 
-                      transition: 'width .3s' 
-                    }} />
+            {!isDemoMode && !mappedMetaAccountId && (
+              <div style={{ background: 'rgba(216, 167, 61, 0.06)', border: `1px solid rgba(216, 167, 61, 0.25)`, borderRadius: 12, padding: '16px 20px', marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(216, 167, 61, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}><i className="fa-solid fa-circle-exclamation"></i></div>
+                  <div>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>Conta Ads Desvinculada</h4>
+                    <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>Não há conta Meta Ads vinculada na VPS.</p>
                   </div>
                 </div>
-              ))}
-            </Card>
-            
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Tendência" title="Leads e conversões por mês" />
-              <div style={{ width: '100%', height: 190 }}>
-                {trend.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trend} margin={{ left: -20, right: 10 }}>
-                      <CartesianGrid stroke={COLORS.border} vertical={false} />
-                      <XAxis dataKey="mes" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
-                      <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Line type="monotone" dataKey="leads" name="Leads" stroke={COLORS.slate} strokeWidth={2} dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey="convertidos" name="Convertidos" stroke={COLORS.gold} strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
-                )}
+                <button onClick={() => { setActiveView('view-events'); setSettingsTab('meta'); }} style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', fontSize: 12.5, padding: '8px 16px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-link"></i> Vincular Conta do Facebook
+                </button>
               </div>
-            </Card>
-          </div>
+            )}
 
-          {/* Canal + Dispositivo + Heatmap */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Canal" title="Instagram vs Facebook" />
-              <div style={{ width: '100%', height: 180 }}>
-                {byPlatform.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={byPlatform} margin={{ left: -20, right: 10 }}>
-                      <CartesianGrid stroke={COLORS.border} vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
-                      <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="leads" name="Leads" fill={COLORS.slate} radius={[6, 6, 0, 0]} />
-                      <Bar dataKey="convertidos" name="Convertidos" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
-                )}
-              </div>
-            </Card>
-
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Dispositivo" title="Android vs iOS" />
-              <div style={{ width: '100%', height: 160 }}>
-                {byDevice.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={byDevice} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={3} startAngle={90} endAngle={450}>
-                        {byDevice.map((d, i) => <Cell key={i} fill={d.name === 'android' ? COLORS.teal : d.name === 'ios' ? COLORS.gold : COLORS.slate} stroke="none" />)}
-                      </Pie>
-                      <Tooltip content={<CustomTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados no período</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 4 }}>
-                {byDevice.map((d, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: COLORS.textSoft }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.name === 'android' ? COLORS.teal : d.name === 'ios' ? COLORS.gold : COLORS.slate }} />
-                    <span style={{ textTransform: 'capitalize' }}>{d.name}</span> ({d.value})
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card style={{ minHeight: 250 }}>
-              <SectionTitle eyebrow="Horário" title="Quando os leads chegam" />
-              <div style={{ display: 'grid', gridTemplateColumns: '54px repeat(4, 1fr)', gap: 4, fontSize: 10.5 }}>
-                <div />
-                {PERIOD_ORDER.map(p => <div key={p} style={{ textAlign: 'center', color: COLORS.textFaint }}>{p}</div>)}
-                {DAY_ORDER.map(day => (
-                  <React.Fragment key={day}>
-                    <div style={{ color: COLORS.textFaint, display: 'flex', alignItems: 'center' }}>{day}</div>
-                    {PERIOD_ORDER.map(period => {
-                      const v = heatmap.grid[day][period];
-                      const intensity = v / (heatmap.max || 1);
-                      return (
-                        <div key={period} title={`${day} ${period}: ${v} leads`} style={{
-                          height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: v > 0 ? `rgba(216,167,61,${0.08 + intensity * 0.75})` : 'transparent',
-                          border: v > 0 ? `1px solid rgba(216,167,61,${0.05 + intensity * 0.2})` : `1px solid ${COLORS.border}`,
-                          color: intensity > 0.5 ? COLORS.goldText : COLORS.textFaint, fontFamily: 'var(--font-mono)', fontSize: 10
-                        }}>{v || ''}</div>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          {/* Campanhas */}
-          <Card style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-              <SectionTitle eyebrow="Ranking" title="Performance por campanha" sub="Clique nas colunas para ordenar" />
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[['leads', 'Leads'], ['taxa', 'Conversão'], ['receita', 'Receita']].map(([k, label]) => (
-                  <Chip key={k} active={sortKey === k} onClick={() => setSortKey(k)}>{label}</Chip>
-                ))}
-              </div>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="rk" style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
-                <thead>
-                  <tr>
-                    <th>Campanha</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.length > 0 ? (
-                    campaigns.map((c, i) => (
-                      <tr key={i}>
-                        <td style={{ color: COLORS.text, fontWeight: 500 }}>{c.name}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtNum(c.leads)}</td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div style={{ width: 50, height: 5, background: COLORS.surfaceHi, borderRadius: 3, overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.min(c.taxa, 100)}%`, height: '100%', background: COLORS.teal }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ fontFamily: 'var(--font-mono)', color: c.taxa > kpis.taxaConv ? COLORS.gold : COLORS.textSoft }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                            {c.taxa > kpis.taxaConv ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                            {fmtPct(c.taxa)}
-                          </span>
-                        </td>
-                        <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtBRL(c.receita)}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)', color: COLORS.textFaint }}>{c.ticket ? fmtBRL(c.ticket) : '—'}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhuma campanha encontrada</td>
-                    </tr>
+            {/* VIEW 1: GERAL */}
+            {activeView === 'view-geral' && (
+              <div className="dashboard-view">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                  {['instagram', 'facebook'].map(p => (
+                    <Chip key={p} active={platforms.includes(p)} onClick={() => toggle(platforms, setPlatforms, p)}>{PLATFORM_LABEL[p]}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  {['android', 'ios'].map(d => (
+                    <Chip key={d} active={devices.includes(d)} onClick={() => toggle(devices, setDevices, d)} color={COLORS.teal}>{d === 'android' ? 'Android' : 'iOS'}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  {['lead', 'lead qualificado', 'convertido', 'sem interesse'].map(s => (
+                    <Chip key={s} active={statuses.includes(s)} onClick={() => toggle(statuses, setStatuses, s)} color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Chip>
+                  ))}
+                  <div style={{ width: 1, height: 20, background: COLORS.border, margin: '0 4px' }} />
+                  <select value="" onChange={e => { if (e.target.value) toggle(months, setMonths, e.target.value); }} style={{ background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: 999, color: COLORS.textSoft, fontSize: 12.5, padding: '6px 10px', outline: 'none' }}>
+                    <option value="" style={{ background: COLORS.surface }}>+ Mês</option>
+                    {allMonths.filter(m => !months.includes(m)).map(m => <option key={m} value={m} style={{ background: COLORS.surface }}>{m}</option>)}
+                  </select>
+                  {months.map(m => <Chip key={m} active onClick={() => toggle(months, setMonths, m)} color={COLORS.slate}>{m} ×</Chip>)}
+                  {hasFilters && (
+                    <button onClick={resetFilters} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', color: COLORS.textFaint, fontSize: 12, cursor: 'pointer' }}>
+                      <RotateCcw size={12} /> limpar filtros
+                    </button>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                </div>
 
-          {/* Criativos */}
-          <Card>
-            <SectionTitle eyebrow="Criativos" title="Melhores anúncios por volume de leads" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
-              {creatives.length > 0 ? (
-                creatives.map((c, i) => (
-                  <div key={i} style={{ background: COLORS.surfaceHi, borderRadius: 10, border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
-                    <div style={{ height: 90, background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                      {c.thumb ? (
-                        <img 
-                          src={c.thumb} 
-                          alt="" 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }}
-                          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                        />
-                      ) : null}
-                      <div style={{ display: c.thumb ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, color: COLORS.textFaint }}>
-                        <ImageOff size={20} />
-                        <span style={{ fontSize: 10 }}>prévia indisponível</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+                  <KPI icon={Users} label="Total de conversas" value={fmtNum(kpis.total)} sub={metaMetrics ? `${fmtNum(metaMetrics.conversasMeta)} cliques WhatsApp` : 'Sem dados Meta'} accent={COLORS.slate} />
+                  {metaMetrics && <KPI icon={DollarSign} label="Custo por lead" value={fmtBRL(metaMetrics.cpl)} sub={`vs ${fmtBRL(metaMetrics.cpc)} custo clique`} accent={COLORS.rust} />}
+                  <KPI icon={TrendingUp} label="Taxa de qualificação" value={fmtPct(kpis.taxaQual)} sub="qualificado + convertido" accent={COLORS.teal} />
+                  <KPI icon={Target} label="Taxa de conversão" value={fmtPct(kpis.taxaConv)} sub={`${fmtNum(kpis.convertidos)} convertidos`} accent={COLORS.gold} />
+                  <KPI icon={DollarSign} label="Receita gerada" value={fmtBRL(kpis.receita)} accent={COLORS.gold} />
+                  <KPI icon={Smartphone} label="Total investido" value={metaMetrics ? fmtBRL(metaMetrics.spend) : "Sem Vínculo"} sub={metaMetrics ? "No período selecionado" : "Sem conta vinculada"} accent={metaMetrics ? COLORS.gold : COLORS.rust} />
+                </div>
+
+                {insights.length > 0 && (
+                  <Card style={{ background: COLORS.surfaceHi }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <Sparkles size={15} color={COLORS.gold} />
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>Padrões encontrados</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+                      {insights.map((ins, i) => (
+                        <div key={i} style={{ fontSize: 13, color: COLORS.textSoft, display: 'flex', gap: 8 }}>
+                          <span style={{ color: COLORS.gold, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(i + 1).padStart(2, '0')}</span>
+                          <span>{ins}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                  <Card>
+                    <SectionTitle eyebrow="Funil" title="Do lead à venda" sub="Leads sem interesse saem do funil" />
+                    {funnel.map((f, i) => (
+                      <div key={f.stage} style={{ marginBottom: i < funnel.length - 1 ? 14 : 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+                          <span style={{ color: COLORS.textSoft }}>{f.stage}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.text }}>{f.value !== null ? `${fmtNum(f.value)} · ${fmtPct(f.pct)}` : 'Meta desvinculado'}</span>
+                        </div>
+                        <div style={{ height: 10, background: COLORS.surfaceHi, borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(f.pct, 100)}%`, background: ['#3b82f6', COLORS.slate, '#4F8F73', '#a855f7', COLORS.gold][i] || COLORS.slate, borderRadius: 6 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </Card>
+                  
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Tendência" title="Leads e conversões por mês" />
+                    <div style={{ width: '100%', height: 190 }}>
+                      {trend.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={trend} margin={{ left: -20, right: 10 }}>
+                            <CartesianGrid stroke={COLORS.border} vertical={false} />
+                            <XAxis dataKey="mes" tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+                            <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Line type="monotone" dataKey="leads" stroke={COLORS.slate} strokeWidth={2} dot={{ r: 3 }} />
+                            <Line type="monotone" dataKey="convertidos" stroke={COLORS.gold} strokeWidth={2} dot={{ r: 3 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                  </Card>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Canal" title="Instagram vs Facebook" />
+                    <div style={{ width: '100%', height: 180 }}>
+                      {byPlatform.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={byPlatform} margin={{ left: -20, right: 10 }}>
+                            <CartesianGrid stroke={COLORS.border} vertical={false} />
+                            <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                            <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="leads" fill={COLORS.slate} radius={[6, 6, 0, 0]} />
+                            <Bar dataKey="convertidos" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                  </Card>
+
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Dispositivo" title="Android vs iOS" />
+                    <div style={{ width: '100%', height: 160 }}>
+                      {byDevice.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={byDevice} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={3}>
+                              {byDevice.map((d, i) => <Cell key={i} fill={d.name === 'android' ? COLORS.teal : COLORS.gold} stroke="none" />)}
+                            </Pie>
+                            <Tooltip content={<CustomTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 14 }}>
+                      {byDevice.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: COLORS.textSoft }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.name === 'android' ? COLORS.teal : COLORS.gold }} />
+                          <span style={{ textTransform: 'capitalize' }}>{d.name}</span> ({d.value})
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card style={{ minHeight: 250 }}>
+                    <SectionTitle eyebrow="Horário" title="Quando os leads chegam" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '54px repeat(4, 1fr)', gap: 4, fontSize: 10.5 }}>
+                      <div />
+                      {PERIOD_ORDER.map(p => <div key={p} style={{ textAlign: 'center', color: COLORS.textFaint }}>{p}</div>)}
+                      {DAY_ORDER.map(day => (
+                        <React.Fragment key={day}>
+                          <div style={{ color: COLORS.textFaint, display: 'flex', alignItems: 'center' }}>{day}</div>
+                          {PERIOD_ORDER.map(period => {
+                            const v = heatmap.grid[day][period];
+                            const intensity = v / (heatmap.max || 1);
+                            return (
+                              <div key={period} style={{
+                                height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: v > 0 ? `rgba(216,167,61,${0.08 + intensity * 0.75})` : 'transparent',
+                                border: v > 0 ? `1px solid rgba(216,167,61,${0.05 + intensity * 0.2})` : `1px solid ${COLORS.border}`,
+                                color: intensity > 0.5 ? COLORS.goldText : COLORS.textFaint, fontFamily: 'var(--font-mono)', fontSize: 10
+                              }}>{v || ''}</div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2: CAMPAIGN ANALYSIS */}
+            {activeView === 'view-campaign' && (
+              <div className="dashboard-view animate-fade-in">
+                <Card style={{ minHeight: 300 }}>
+                  <SectionTitle eyebrow="Performance" title="Top 5 Campanhas" sub="Melhores campanhas em volume de leads" />
+                  <div style={{ width: '100%', height: 220 }}>
+                    {campaigns.slice(0, 5).length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={campaigns.slice(0, 5)} margin={{ left: -20, right: 10 }}>
+                          <CartesianGrid stroke={COLORS.border} vertical={false} />
+                          <XAxis dataKey="name" tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                          <YAxis tick={{ fill: COLORS.textFaint, fontSize: 11 }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Bar dataKey="leads" fill={COLORS.gold} radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.textFaint }}>Sem dados</div>}
+                  </div>
+                </Card>
+
+                {/* Auditoria & Raio-X Meta Ads */}
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ background: 'rgba(24, 119, 242, 0.1)', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+                        <i className="fa-brands fa-facebook" style={{ color: '#1877F2', fontSize: '1.4rem' }}></i>
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Auditoria & Raio-X Meta Ads</h3>
+                        <p style={{ fontSize: 12, color: COLORS.textSoft, margin: '2px 0 0 0' }}>Análise detalhada do investimento e cliques Meta Ads cruzados com CRM</p>
                       </div>
                     </div>
-                    <div style={{ padding: 10 }}>
-                      <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 500, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.titulo}>{c.titulo}</div>
-                      <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.anuncio}>{c.anuncio}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-                        <span style={{ color: COLORS.textSoft }}>{fmtNum(c.leads)} leads</span>
-                        <span style={{ fontFamily: 'var(--font-mono)', color: c.taxa > 0 ? COLORS.gold : COLORS.textFaint }}>{fmtPct(c.taxa)}</span>
-                      </div>
+                    {(selectedMetaCampaignId || selectedMetaAdsetId || selectedMetaAdId) && (
+                      <button onClick={() => { setSelectedMetaCampaignId(null); setSelectedMetaAdsetId(null); setSelectedMetaAdId(null); }} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Limpar Filtros</button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Investimento Meta</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>{fmtBRL(metaAuditMetrics.spend)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Alcance</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.slate }}>{fmtNum(metaAuditMetrics.reach)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Cliques WhatsApp</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.gold }}>{fmtNum(metaAuditMetrics.conversas)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Leads CRM</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.teal }}>{fmtNum(metaAuditMetrics.crmLeads)}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${COLORS.border}` }}>
+                      <div style={{ fontSize: 11, color: COLORS.textSoft, textTransform: 'uppercase' }}>Vendas CRM</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8, color: COLORS.gold }}>{fmtNum(metaAuditMetrics.crmVendas)}</div>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Nenhum criativo encontrado com dados de prévia</div>
-              )}
-            </div>
-          </Card>
 
-          {/* Modal de Configurações */}
-          {isSettingsOpen && (
-            <div style={{
-              position: 'fixed',
-              top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(18, 32, 26, 0.85)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-              padding: 16,
-              animation: 'fadeIn 0.2s ease-out'
-            }}>
-              <div style={{
-                background: COLORS.surface,
-                border: `1px solid ${COLORS.borderStrong}`,
-                borderRadius: 16,
-                width: '100%',
-                maxWidth: 680,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                maxHeight: '90vh',
-                overflow: 'hidden',
-                animation: 'slideUp 0.2s ease-out'
-              }}>
-                {/* Header do Modal */}
-                <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <i className="fa-solid fa-sliders" style={{ color: COLORS.gold }}></i>
-                    Configurações de Conexão
-                  </h3>
-                  <button 
-                    onClick={() => setIsSettingsOpen(false)} 
-                    style={{ background: 'transparent', border: 'none', color: COLORS.textSoft, fontSize: 18, cursor: 'pointer' }}
-                  >
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
-                </div>
-
-                {/* Tabs */}
-                <div style={{ display: 'flex', borderBottom: `1px solid ${COLORS.border}`, background: COLORS.bg }}>
-                  <button 
-                    onClick={() => setSettingsTab('status')}
-                    style={{ 
-                      flex: 1, padding: '14px 20px', border: 'none', 
-                      background: settingsTab === 'status' ? COLORS.surface : 'transparent',
-                      color: settingsTab === 'status' ? COLORS.gold : COLORS.textSoft,
-                      borderBottom: settingsTab === 'status' ? `2px solid ${COLORS.gold}` : 'none',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s'
-                    }}
-                  >
-                    <i className="fa-solid fa-link" style={{ marginRight: 8 }}></i>
-                    Google Drive
-                  </button>
-                  <button 
-                    onClick={() => setSettingsTab('meta')}
-                    style={{ 
-                      flex: 1, padding: '14px 20px', border: 'none', 
-                      background: settingsTab === 'meta' ? COLORS.surface : 'transparent',
-                      color: settingsTab === 'meta' ? COLORS.gold : COLORS.textSoft,
-                      borderBottom: settingsTab === 'meta' ? `2px solid ${COLORS.gold}` : 'none',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s'
-                    }}
-                  >
-                    <i className="fa-brands fa-facebook" style={{ marginRight: 8 }}></i>
-                    Meta Ads (Facebook)
-                  </button>
-                </div>
-
-                {/* Body */}
-                <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-                  {settingsTab === 'status' && (
-                    <div>
-                      <p style={{ fontSize: 13, color: COLORS.textSoft, marginBottom: 20, lineHeight: '1.5' }}>
-                        A conexão com o Google Drive é necessária para que o dashboard possa listar as pastas de clientes e ler as planilhas de leads WhatsApp (leads_campanha_whatsapp.csv).
-                      </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                    <div style={{ padding: 20, borderRadius: 16, border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.01)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 4, borderRadius: 8 }}>
+                          <button onClick={() => setExplorerLevel('campaign')} style={{ background: explorerLevel === 'campaign' ? COLORS.gold : 'transparent', color: explorerLevel === 'campaign' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Campanhas</button>
+                          <button onClick={() => setExplorerLevel('adset')} style={{ background: explorerLevel === 'adset' ? COLORS.gold : 'transparent', color: explorerLevel === 'adset' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Conjuntos</button>
+                          <button onClick={() => setExplorerLevel('creative')} style={{ background: explorerLevel === 'creative' ? COLORS.gold : 'transparent', color: explorerLevel === 'creative' ? COLORS.bg : COLORS.textSoft, border: 'none', padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Criativos</button>
+                        </div>
+                        <input type="text" placeholder="Filtrar..." value={explorerSearch} onChange={e => setExplorerSearch(e.target.value)} style={{ padding: '8px 12px', fontSize: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${COLORS.border}`, borderRadius: 6, color: '#fff', outline: 'none' }} />
+                      </div>
                       
-                      <div style={{ 
-                        background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 20, 
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                          <div style={{ 
-                            width: 48, height: 48, borderRadius: '50%', 
-                            background: googleConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: googleConnected ? '#10b981' : '#ef4444', fontSize: 20,
-                            border: `1px solid ${googleConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
-                          }}>
-                            {checkingGoogle ? (
-                              <div style={{ width: 20, height: 20, border: '2px solid transparent', borderTop: '2px solid currentColor', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            ) : (
-                              <i className={googleConnected ? "fa-solid fa-circle-check" : "fa-solid fa-circle-xmark"}></i>
-                            )}
-                          </div>
-                          <div>
-                            <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>
-                              {checkingGoogle ? 'Verificando status...' : googleConnected ? 'Google Drive Conectado' : 'Google Drive Desconectado'}
-                            </h4>
-                            <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>
-                              {googleConnected ? 'Acesso total de leitura ativo na VPS.' : 'Nenhuma conta do Google autorizada na VPS.'}
-                            </p>
-                          </div>
-                        </div>
-
-                        {!checkingGoogle && (
-                          <button
-                            onClick={async () => {
-                              if (googleConnected) {
-                                if (confirm('Deseja realmente desconectar a sua conta do Google Drive da VPS?')) {
-                                  try {
-                                    const res = await fetch('/api/google/disconnect', { method: 'POST' });
-                                    if (res.ok) {
-                                      alert('Google Drive desconectado com sucesso.');
-                                      checkGoogleStatus();
-                                    }
-                                  } catch (e) {
-                                    alert('Erro ao desconectar Google Drive.');
-                                  }
-                                }
-                              } else {
-                                window.location.href = '/api/google/auth';
+                      <div style={{ overflowX: 'auto', maxHeight: 300 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12.5 }}>
+                          <thead>
+                            <tr style={{ borderBottom: `1px solid ${COLORS.borderStrong}` }}>
+                              <th style={{ padding: '10px 12px' }}>Elemento</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Investido</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Cliques</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Cliques Whats</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>CRM Leads</th>
+                              <th style={{ padding: '10px 12px', textAlign: 'right' }}>CPL CRM</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {explorerData.length > 0 ? explorerData.map((row, i) => {
+                              let displayName = '', subName = '', rowId = '', isSelected = false;
+                              if (explorerLevel === 'campaign') { rowId = row.campaign_id; displayName = row.campaign_name; isSelected = selectedMetaCampaignId === rowId; }
+                              else if (explorerLevel === 'adset') { rowId = row.adset_id; displayName = row.adset_name; subName = row.campaign_name; isSelected = selectedMetaAdsetId === rowId; }
+                              else { rowId = row.ad_id; displayName = row.ad_name; subName = row.adset_name; isSelected = selectedMetaAdId === rowId; }
+                              
+                              let leadsCount = 0;
+                              if (explorerLevel === 'campaign') leadsCount = leads.filter(l => l.campanha_curta && l.campanha_curta.toLowerCase() === displayName.toLowerCase()).length;
+                              else if (explorerLevel === 'adset') leadsCount = leads.filter(l => l.adset && l.adset.toLowerCase() === displayName.toLowerCase()).length;
+                              else {
+                                const clean = displayName.replace(/\s*\[v\d+\]$/, '').toLowerCase();
+                                leadsCount = leads.filter(l => l.criativo && (l.criativo.toLowerCase() === displayName.toLowerCase() || l.criativo.toLowerCase() === clean)).length;
                               }
-                            }}
-                            style={{ 
-                              background: googleConnected ? 'rgba(239, 68, 68, 0.1)' : COLORS.gold,
-                              border: googleConnected ? '1px solid rgba(239, 68, 68, 0.2)' : 'none',
-                              color: googleConnected ? '#ef4444' : COLORS.bg,
-                              padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                              transition: 'all 0.15s'
-                            }}
-                          >
-                            {googleConnected ? 'Desconectar' : 'Conectar Conta'}
-                          </button>
-                        )}
+                              const cpl = leadsCount > 0 ? (row.spend / leadsCount) : 0;
+                              
+                              return (
+                                <tr key={rowId || i} onClick={() => {
+                                  if (explorerLevel === 'campaign') { setSelectedMetaCampaignId(selectedMetaCampaignId === rowId ? null : rowId); setSelectedMetaAdsetId(null); setSelectedMetaAdId(null); }
+                                  else if (explorerLevel === 'adset') { setSelectedMetaAdsetId(selectedMetaAdsetId === rowId ? null : rowId); setSelectedMetaAdId(null); }
+                                  else { setSelectedMetaAdId(selectedMetaAdId === rowId ? null : rowId); }
+                                }} style={{ background: isSelected ? 'rgba(218, 167, 61, 0.15)' : 'transparent', cursor: 'pointer', borderBottom: `1px solid ${COLORS.border}` }}>
+                                  <td style={{ padding: '10px 12px' }}>
+                                    <div style={{ fontWeight: 600, color: COLORS.text }}>{displayName}</div>
+                                    {subName && <div style={{ fontSize: 10.5, color: COLORS.textSoft, marginTop: 2 }}>{subName}</div>}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtBRL(row.spend || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(row.clicks || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(row.conversas || 0)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtNum(leadsCount)}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{cpl > 0 ? fmtBRL(cpl) : '-'}</td>
+                                </tr>
+                              );
+                            }) : <tr><td colSpan={6} style={{ textAlign: 'center', padding: 20, color: COLORS.textSoft }}>Nenhum registro</td></tr>}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  )}
 
-                  {settingsTab === 'meta' && (
-                    <div>
-                      <p style={{ fontSize: 13, color: COLORS.textSoft, marginBottom: 20, lineHeight: '1.5' }}>
-                        Vincule o cliente <strong style={{ color: COLORS.gold }}>{selectedClient}</strong> a uma conta de anúncios do Facebook para cruzar dados de leads com investimentos, CPA e impressões do Meta Ads.
-                      </p>
-
-                      {/* Status Atual do Mapeamento */}
-                      <div style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 12, color: COLORS.textSoft }}>Vínculo Atual:</span>
-                          <span style={{ 
-                            fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-                            background: mappedMetaAccountId ? 'rgba(16, 185, 129, 0.1)' : 'rgba(249, 115, 22, 0.1)',
-                            color: mappedMetaAccountId ? '#10b981' : '#f97316',
-                            border: `1px solid ${mappedMetaAccountId ? 'rgba(16, 185, 129, 0.2)' : 'rgba(249, 115, 22, 0.2)'}`
-                          }}>
-                            {mappedMetaAccountId ? 'VINCULADO' : 'DESVINCULADO'}
-                          </span>
-                        </div>
-                        {mappedMetaAccountId ? (
-                          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div style={{ fontSize: 13.5, color: COLORS.text }}>
-                              Conta Ads: <strong style={{ color: COLORS.gold }}>{mappedMetaAccountName}</strong> <span style={{ fontSize: 12, color: COLORS.textFaint }}>(ID: {mappedMetaAccountId})</span>
-                            </div>
-                            {mappedInstagramUsername && (
-                              <div style={{ fontSize: 13, color: COLORS.textSoft }}>
-                                Instagram: <strong style={{ color: COLORS.teal }}>{mappedInstagramUsername}</strong>
+                    <div style={{ padding: 20, borderRadius: 16, border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column' }}>
+                      <h4 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <i className="fa-solid fa-filter" style={{ color: COLORS.gold }}></i>Funil Auditoria Meta Ads
+                      </h4>
+                      <div className="funnel-container">
+                        {[
+                          { name: 'Alcance', val: metaAuditMetrics.reach },
+                          { name: 'Cliques Whats', val: metaAuditMetrics.conversas },
+                          { name: 'Leads CRM', val: metaAuditMetrics.crmLeads },
+                          { name: 'Vendas CRM', val: metaAuditMetrics.crmVendas }
+                        ].map((step, i, arr) => {
+                          let conversionRate = 0;
+                          if (i > 0 && arr[i-1].val > 0) conversionRate = (step.val / arr[i-1].val) * 100;
+                          return (
+                            <div key={step.name} className="funnel-step-wrapper">
+                              {i > 0 && <div className="funnel-conversion-badge highlight"><i className="fa-solid fa-arrow-down-long"></i><span>Conversão: <strong>{conversionRate.toFixed(1)}%</strong></span></div>}
+                              <div className={`funnel-step step-${i + 1}`} style={{ height: 32 }}>
+                                <div className="funnel-step-label"><span>{step.name}</span><span>{fmtNum(step.val)}</span></div>
                               </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ marginTop: 12, fontSize: 13, color: COLORS.textFaint }}>
-                            Nenhuma conta do Meta Ads vinculada a este cliente.
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
+                    </div>
+                  </div>
+                </Card>
 
-                      {/* Botão de Autenticação com Facebook */}
-                      <button
-                        onClick={() => {
-                          window.location.href = `/api/meta/auth?clientName=${encodeURIComponent(selectedClient)}`;
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                          background: '#1877F2', color: '#fff', border: 'none', padding: '12px',
-                          fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', marginBottom: 20,
-                          transition: 'background 0.2s'
-                        }}
-                      >
-                        <i className="fa-brands fa-facebook" style={{ fontSize: 16 }}></i>
-                        Conectar nova conta do Facebook / Atualizar Token
-                      </button>
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <SectionTitle eyebrow="Ranking" title="Performance por campanha" sub="Clique nas colunas para ordenar" />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[['leads', 'Leads'], ['taxa', 'Conversão'], ['receita', 'Receita']].map(([k, label]) => (
+                        <Chip key={k} active={sortKey === k} onClick={() => setSortKey(k)}>{label}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="rk" style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+                      <thead><tr><th>Campanha</th><th>Leads</th><th>Qualificação</th><th>Conversão</th><th>Receita</th><th>Ticket médio</th></tr></thead>
+                      <tbody>
+                        {campaigns.length > 0 ? campaigns.map((c, i) => (
+                          <tr key={i}>
+                            <td style={{ color: COLORS.text, fontWeight: 500 }}>{c.name}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtNum(c.leads)}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ width: 50, height: 5, background: COLORS.surfaceHi, borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ width: `${Math.min(c.taxa, 100)}%`, height: '100%', background: COLORS.teal }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: c.taxa > kpis.taxaConv ? COLORS.gold : COLORS.textSoft }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                {c.taxa > kpis.taxaConv ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(c.taxa)}
+                              </span>
+                            </td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtBRL(c.receita)}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: COLORS.textFaint }}>{c.ticket ? fmtBRL(c.ticket) : '—'}</td>
+                          </tr>
+                        )) : <tr><td colSpan={6} style={{ textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Sem dados</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
 
-                      {/* Título da Lista de Contas */}
-                      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>Contas Ads Disponíveis</span>
+            {/* VIEW 3: VIDEO ANALYSIS */}
+            {activeView === 'view-video' && (
+              <div className="dashboard-view animate-fade-in">
+                <div className="video-analysis-placeholder glass-panel" style={{ padding: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, background: COLORS.surface, borderRadius: 12 }}>
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(218, 167, 61, 0.1)', border: `2px solid ${COLORS.gold}`, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <i className="fa-solid fa-play" style={{ fontSize: 40, color: COLORS.gold, marginLeft: 6 }}></i>
+                  </div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: COLORS.text }}>Análise de Retenção de Vídeos</h2>
+                  <p style={{ color: COLORS.textSoft, maxWidth: 600, lineHeight: 1.6, fontSize: 14 }}>
+                    Acompanhe a performance dos seus criativos em vídeo. Visualize curvas de retenção, hook rates e hold rates.
+                  </p>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, width: '100%', marginTop: 20 }}>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Hook Rate Médio (3s)</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.gold, marginTop: 8 }}>42.5%</h3>
+                      <span style={{ fontSize: 12, color: COLORS.teal }}><i className="fa-solid fa-arrow-up"></i> +4.2%</span>
+                    </div>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Hold Rate Médio (15s)</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.teal, marginTop: 8 }}>18.2%</h3>
+                      <span style={{ fontSize: 12, color: COLORS.teal }}><i className="fa-solid fa-arrow-up"></i> +1.8%</span>
+                    </div>
+                    <div style={{ padding: 20, background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+                      <span style={{ fontSize: 13, color: COLORS.textSoft }}>Tempo Médio de Reprodução</span>
+                      <h3 style={{ fontSize: 28, fontWeight: 700, color: COLORS.rust, marginTop: 8 }}>8.4s</h3>
+                      <span style={{ fontSize: 12, color: COLORS.rust }}><i className="fa-solid fa-arrow-down"></i> -0.3s</span>
+                    </div>
+                  </div>
+
+                  <div style={{ width: '100%', height: 300, marginTop: 24, border: `1px solid ${COLORS.border}`, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05, background: 'repeating-linear-gradient(0deg, #fff, #fff 1px, transparent 1px, transparent 40px)' }}></div>
+                    <svg viewBox="0 0 1000 300" style={{ width: '85%', height: '70%', overflow: 'visible' }}>
+                      <defs>
+                        <linearGradient id="video-grad-agro" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor={COLORS.gold} stopOpacity="0.8" />
+                          <stop offset="100%" stopColor={COLORS.teal} stopOpacity="0.1" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M 0 50 Q 150 70 300 180 T 600 240 T 1000 270 L 1000 300 L 0 300 Z" fill="url(#video-grad-agro)" />
+                      <path d="M 0 50 Q 150 70 300 180 T 600 240 T 1000 270" fill="none" stroke={COLORS.gold} strokeWidth="4" />
+                      <circle cx="300" cy="180" r="6" fill="#fff" stroke={COLORS.gold} strokeWidth="3" />
+                      <text x="310" y="170" fill="#fff" fontSize="13" fontWeight="600">3s (Hook Rate: 42.5%)</text>
+                      <circle cx="600" cy="240" r="6" fill="#fff" stroke={COLORS.teal} strokeWidth="3" />
+                      <text x="610" y="230" fill="#fff" fontSize="13" fontWeight="600">15s (Hold Rate: 18.2%)</text>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeView === 'view-leads' && (
+              <div className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <Card>
+                  <SectionTitle eyebrow="Criativos" title="Melhores anúncios por volume de leads" />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+                    {creatives.length > 0 ? creatives.map((c, i) => (
+                      <div key={i} style={{ background: COLORS.surfaceHi, borderRadius: 10, border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
+                        <div style={{ height: 90, background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          {c.thumb ? <img src={c.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} /> : null}
+                          <div style={{ display: c.thumb ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: COLORS.textFaint }}><ImageOff size={20} /></div>
+                        </div>
+                        <div style={{ padding: 10 }}>
+                          <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titulo}</div>
+                          <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.anuncio}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                            <span style={{ color: COLORS.textSoft }}>{fmtNum(c.leads)} leads</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', color: COLORS.gold }}>{fmtPct(c.taxa)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )) : <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: COLORS.textFaint, padding: '20px 0' }}>Sem criativos</div>}
+                  </div>
+                </Card>
+
+                {/* CRM Leads Spreadsheet */}
+                <Card style={{ padding: 24, minHeight: 480 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
+                    <div>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: COLORS.text }}>CRM Leads Spreadsheet</h3>
+                      <span style={{ fontSize: 12, color: COLORS.textSoft }}>{fmtNum(sortedLeads.length)} leads encontrados</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <div className="search-box" style={{ margin: 0, position: 'relative' }}>
+                        <i className="fa-solid fa-magnifying-glass search-icon" style={{ position: 'absolute', left: 12, top: 12, color: COLORS.textFaint }}></i>
                         <input 
                           type="text" 
-                          placeholder="Buscar conta..." 
-                          value={searchMetaQuery}
-                          onChange={(e) => setSearchMetaQuery(e.target.value)}
-                          style={{
-                            background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6,
-                            color: COLORS.text, padding: '6px 12px', fontSize: 12, outline: 'none', width: 180
+                          id="leads-table-search" 
+                          placeholder="Buscar lead por nome/telefone..." 
+                          value={leadsSearchQuery}
+                          onChange={(e) => {
+                            setLeadsSearchQuery(e.target.value);
+                            setLeadsCurrentPage(1);
                           }}
+                          style={{ padding: '10px 12px 10px 36px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', outline: 'none' }}
                         />
                       </div>
+                    </div>
+                  </div>
 
-                      {/* Grid de Contas */}
-                      <div style={{
-                        maxHeight: 220, overflowY: 'auto', border: `1px solid ${COLORS.border}`,
-                        borderRadius: 10, background: COLORS.bg, padding: 8
-                      }}>
-                        {loadingMetaAccounts ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 0', gap: 8, color: COLORS.textSoft, fontSize: 13 }}>
-                            <div style={{ width: 16, height: 16, border: '2px solid transparent', borderTop: '2px solid currentColor', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            <span>Buscando contas no Facebook...</span>
-                          </div>
-                        ) : filteredMetaAccounts.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {filteredMetaAccounts.map((acc) => (
-                              <div 
-                                key={acc.id} 
-                                style={{
-                                  background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-                                  padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                  transition: 'border-color 0.15s'
-                                }}
-                              >
-                                <div>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{acc.name}</div>
-                                  <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 2 }}>ID: {acc.id} {acc.instagram !== 'Não vinculado' && `· Insta: ${acc.instagram}`}</div>
-                                </div>
-                                <button
-                                  disabled={savingMapping}
-                                  onClick={async () => {
-                                    await handleSaveMapping(acc);
-                                  }}
-                                  style={{
-                                    background: 'rgba(216, 167, 61, 0.1)', border: `1px solid ${COLORS.gold}44`,
-                                    color: COLORS.gold, padding: '6px 12px', borderRadius: 6, fontSize: 11.5,
-                                    fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s'
-                                  }}
-                                >
-                                  {savingMapping ? 'Vinculando...' : 'Vincular'}
-                                </button>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table id="leads-spreadsheet-table" className="leads-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                          <th style={{ padding: 10, width: 60, textAlign: 'center' }}>Preview</th>
+                          <th style={{ padding: 10 }}>Nome</th>
+                          <th style={{ padding: 10 }}>WhatsApp/Telefone</th>
+                          <th style={{ padding: 10 }}>Plataforma</th>
+                          <th style={{ padding: 10 }}>Dispositivo</th>
+                          <th style={{ padding: 10 }}>Status</th>
+                          <th 
+                            style={{ padding: 10, cursor: 'pointer', userSelect: 'none' }} 
+                            data-column="date"
+                            onClick={() => setLeadsSortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
+                          >
+                            Data/Hora <i className={`fa-solid ${leadsSortDirection === 'desc' ? 'fa-chevron-down' : 'fa-chevron-up'}`} style={{ fontSize: 10, marginLeft: 4 }}></i>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="leads-spreadsheet-body">
+                        {paginatedLeads.map(lead => (
+                          <tr key={lead.id} data-mock={lead.mock_type || undefined} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                            <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: 10 }}>
+                              <div style={{ position: 'relative', width: 40, height: 40, margin: '0 auto', display: 'flex', alignItems: 'center', justifycontent: 'center' }}>
+                                <img 
+                                  className="ad-thumbnail" 
+                                  src={lead.thumb || lead.thumbnail_url || ''} 
+                                  onClick={() => setLightboxImage(lead.thumb || lead.thumbnail_url)}
+                                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
+                                />
+                                <span className="thumbnail-fallback" style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', borderRadius: 4, color: COLORS.textFaint }}><i className="fa-solid fa-image-slash"></i></span>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ textAlign: 'center', color: COLORS.textFaint, padding: '24px 0', fontSize: 12.5 }}>
-                            Nenhuma conta encontrada. Faça login no Facebook acima para carregar a lista de contas.
-                          </div>
-                        )}
-                      </div>
+                            </td>
+                            <td className="col-name" style={{ padding: 10, fontWeight: 600, color: '#fff' }}>{lead.name || '—'}</td>
+                            <td className="col-phone" style={{ padding: 10 }}>{lead.phone || '—'}</td>
+                            <td className="col-platform" style={{ padding: 10 }}>{PLATFORM_LABEL[lead.plataforma] || lead.plataforma || '—'}</td>
+                            <td className="col-device" style={{ padding: 10 }}>{lead.dispositivo || '—'}</td>
+                            <td className="col-status" style={{ padding: 10 }}>{STATUS_LABEL[lead.status] || lead.status || '—'}</td>
+                            <td className="col-date" style={{ padding: 10 }}>{lead.date || lead.data_dt || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {sortedLeads.length === 0 && (
+                    <div id="leads-empty-placeholder" style={{ textAlign: 'center', padding: 40, color: COLORS.textFaint }}>
+                      <i className="fa-solid fa-folder-open" style={{ fontSize: 40, marginBottom: 12, display: 'block' }}></i>
+                      <p>Nenhum lead correspondente encontrado</p>
                     </div>
                   )}
+
+                  {/* Pagination */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
+                    <div id="leads-page-label" style={{ fontSize: 13, color: COLORS.textSoft }}>Página {leadsCurrentPage} de {leadsTotalPages}</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button 
+                        id="leads-pagination-prev" 
+                        disabled={leadsCurrentPage === 1}
+                        onClick={() => setLeadsCurrentPage(prev => Math.max(1, prev - 1))}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === 1 ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === 1 ? 0.5 : 1 }}
+                      >
+                        <i className="fa-solid fa-chevron-left"></i> Anterior
+                      </button>
+                      <button 
+                        id="leads-pagination-next" 
+                        disabled={leadsCurrentPage === leadsTotalPages}
+                        onClick={() => setLeadsCurrentPage(prev => Math.min(leadsTotalPages, prev + 1))}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === leadsTotalPages ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === leadsTotalPages ? 0.5 : 1 }}
+                      >
+                        Próxima <i className="fa-solid fa-chevron-right"></i>
+                      </button>
+                      <button 
+                        id="leads-pagination-last" 
+                        disabled={leadsCurrentPage === leadsTotalPages}
+                        onClick={() => setLeadsCurrentPage(leadsTotalPages)}
+                        style={{ padding: '8px 16px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', cursor: leadsCurrentPage === leadsTotalPages ? 'not-allowed' : 'pointer', opacity: leadsCurrentPage === leadsTotalPages ? 0.5 : 1 }}
+                      >
+                        Última <i className="fa-solid fa-angles-right"></i>
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* VIEW 5: EVENT ANALYSIS */}
+            {activeView === 'view-events' && (
+              <div className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Header buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                  <div>
+                    <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: COLORS.text }}>Análise de Eventos do Meta Pixel</h2>
+                    <p style={{ fontSize: 13, color: COLORS.textSoft }}>Verifique discrepâncias e analise o comportamento do Pixel em tempo real.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button 
+                      id="btn-load-pixel-events" 
+                      onClick={() => {
+                        if (pixelIdInput.trim() === '') {
+                          setIsSettingsOpen(true);
+                          setPixelIdError('Insira um ID de Pixel válido');
+                          return;
+                        }
+                        if (!/^\d+$/.test(pixelIdInput.trim())) {
+                          setIsSettingsOpen(true);
+                          setPixelToastMessage('ID do Pixel precisa ser apenas números');
+                          return;
+                        }
+                        setPixelId(pixelIdInput.trim());
+                        loadPixelEvents(pixelIdInput.trim());
+                      }}
+                      className="btn btn-primary" 
+                      style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <i className="fa-solid fa-cloud-arrow-down"></i> Carregar Eventos Pixel
+                    </button>
+                    <button 
+                      id="btn-clear-pixel-events" 
+                      onClick={clearPixelEvents}
+                      style={{ background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.text, padding: '10px 20px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <i className="fa-solid fa-eraser"></i> Limpar Eventos
+                    </button>
+                  </div>
                 </div>
 
-                {/* Footer do Modal */}
-                <div style={{ padding: '16px 24px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'flex-end', background: COLORS.bg }}>
-                  <button 
-                    onClick={() => setIsSettingsOpen(false)}
-                    style={{ 
-                      background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, color: COLORS.textSoft,
-                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' 
-                    }}
-                  >
-                    Fechar
-                  </button>
+                {/* API Error Message */}
+                {pixelApiError && (
+                  <div id="pixel-error-message" style={{ padding: 15, borderRadius: 8, background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#f43f5e', fontSize: 14, fontWeight: 500 }}>
+                    {pixelApiError}
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {!pixelData && (
+                  <div id="pixel-empty-placeholder" style={{ padding: '60px 20px', textAlign: 'center', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14 }}>
+                    <i className="fa-solid fa-circle-nodes" style={{ fontSize: 48, color: COLORS.textFaint, marginBottom: 16, display: 'block' }}></i>
+                    <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 8 }}>Nenhum dado consultado</h3>
+                    <p style={{ fontSize: 13, color: COLORS.textSoft, maxWidth: 400, margin: '0 auto' }}>Insira o ID do Pixel nas configurações e clique em "Carregar Eventos Pixel" para visualizar a análise.</p>
+                  </div>
+                )}
+
+                {/* Data View */}
+                {pixelData && (
+                  <div id="pixel-data-container" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {/* KPIs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>PageView</div>
+                        <div id="pixel-pageview-count" style={{ fontSize: 32, fontWeight: 700, color: '#fff', marginTop: 10 }}>{fmtNum(pixelData.events.pageview)}</div>
+                      </Card>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Leads (Pixel)</div>
+                        <div id="pixel-lead-count" style={{ fontSize: 32, fontWeight: 700, color: COLORS.gold, marginTop: 10 }}>{fmtNum(pixelData.events.lead)}</div>
+                      </Card>
+                      <Card>
+                        <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Purchase</div>
+                        <div id="pixel-purchase-count" style={{ fontSize: 32, fontWeight: 700, color: COLORS.teal, marginTop: 10 }}>{fmtNum(pixelData.events.purchase)}</div>
+                      </Card>
+                      {/* Discrepancy Card */}
+                      {(() => {
+                        let discrepancyPct = 0;
+                        if (pixelData.discrepancy !== null && pixelData.discrepancy !== undefined) {
+                          discrepancyPct = pixelData.discrepancy;
+                        } else {
+                          const spreadsheetLeads = filtered.length;
+                          const pixelLeads = pixelData.events.lead || 0;
+                          const diff = Math.abs(spreadsheetLeads - pixelLeads);
+                          const maxVal = Math.max(spreadsheetLeads, pixelLeads);
+                          discrepancyPct = maxVal > 0 ? Math.round((diff / maxVal) * 100) : 0;
+                        }
+                        const isHigh = discrepancyPct >= 20;
+                        return (
+                          <div 
+                            id="pixel-discrepancy-card" 
+                            className={`kpi-card glass-panel ${isHigh ? 'discrepancy-warning-high' : ''}`}
+                            style={{ 
+                              padding: 20, borderRadius: 14, background: COLORS.surface, 
+                              border: `1px solid ${isHigh ? '#ef4444' : COLORS.border}`, transition: 'all 0.3s' 
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: COLORS.textSoft, textTransform: 'uppercase', fontWeight: 600 }}>Margem de Discrepância</div>
+                            <div id="discrepancy-margin-val" style={{ fontSize: 32, fontWeight: 700, color: isHigh ? '#ef4444' : COLORS.teal, marginTop: 10 }}>{discrepancyPct}%</div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Timeline and list */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                      <Card style={{ minHeight: 350 }}>
+                        <h4 style={{ fontSize: 14, marginBottom: 16, color: '#fff' }}>Linha do Tempo dos Eventos</h4>
+                        <div style={{ position: 'relative', height: 280, width: '100%' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(243,241,231,0.05)" />
+                              <XAxis dataKey="date" stroke="#94a3b8" />
+                              <YAxis stroke="#94a3b8" />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Line type="monotone" dataKey="PageView" stroke="#a855f7" strokeWidth={2} name="PageView" />
+                              <Line type="monotone" dataKey="Lead" stroke="#00f2fe" strokeWidth={2} name="Lead" />
+                              <Line type="monotone" dataKey="Purchase" stroke="#10b981" strokeWidth={2} name="Purchase" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </Card>
+
+                      <Card style={{ maxHeight: 350, display: 'flex', flexDirection: 'column' }}>
+                        <h4 style={{ fontSize: 14, marginBottom: 16, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <i className="fa-solid fa-clock-rotate-left"></i> Histórico de Eventos Recentes
+                        </h4>
+                        <div id="pixel-events-list" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 5 }}>
+                          {pixelData.timeline.map((item, idx) => {
+                            let icon = <i className="fa-solid fa-eye" style={{ color: '#a855f7' }}></i>;
+                            if (item.event === 'Lead') icon = <i className="fa-solid fa-user-plus" style={{ color: '#00f2fe' }}></i>;
+                            else if (item.event === 'Purchase') icon = <i className="fa-solid fa-cart-shopping" style={{ color: '#10b981' }}></i>;
+                            const time = new Date(item.timestamp).toLocaleString('pt-BR');
+                            return (
+                              <div key={idx} style={{ padding: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 6, border: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}><span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{icon} {item.event}</span><span style={{ fontSize: 11, color: COLORS.textFaint }}>{time}</span></div>
+                                <div style={{ color: COLORS.textSoft, fontSize: 11 }}>{item.details}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Card>
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy status and details */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
+                  <Card style={{ display: 'flex', alignItems: 'center', justifycontent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ 
+                        width: 48, height: 48, borderRadius: '50%', background: googleConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: googleConnected ? '#10b981' : '#ef4444', fontSize: 20,
+                        border: `1px solid ${googleConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
+                      }}>
+                        {checkingGoogle ? <div style={{ width: 20, height: 20, border: '2px solid transparent', borderTop: '2px solid currentColor', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <i className={googleConnected ? "fa-solid fa-circle-check" : "fa-solid fa-circle-xmark"}></i>}
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>{checkingGoogle ? 'Verificando status...' : googleConnected ? 'Google Drive Conectado' : 'Google Drive Desconectado'}</h4>
+                        <p style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 2 }}>{googleConnected ? 'Acesso de leitura ativo na VPS.' : 'Nenhuma conta autorizada na VPS.'}</p>
+                      </div>
+                    </div>
+                    {!checkingGoogle && (
+                      <button onClick={async () => {
+                        if (googleConnected) {
+                          if (confirm('Desconectar a conta do Google Drive da VPS?')) {
+                            try {
+                              const res = await fetch('/api/google/disconnect', { method: 'POST' });
+                              if (res.ok) { alert('Google Drive desconectado.'); checkGoogleStatus(); }
+                            } catch (e) { alert('Erro ao desconectar.'); }
+                          }
+                        } else { window.location.href = '/api/google/auth'; }
+                      }} style={{ background: googleConnected ? 'rgba(239, 68, 68, 0.1)' : COLORS.gold, border: googleConnected ? '1px solid rgba(239, 68, 68, 0.2)' : 'none', color: googleConnected ? '#ef4444' : COLORS.bg, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{googleConnected ? 'Desconectar' : 'Conectar Conta'}</button>
+                    )}
+                  </Card>
+
+                  <Card>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><i className="fa-brands fa-facebook"></i> Meta Ads Marketing</h4>
+                    <ul style={{ listStyle: 'none', fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 6, color: COLORS.textSoft }}>
+                      <li>Ad Account ID: <span style={{ color: COLORS.teal, fontWeight: 'bold' }}>{mappedMetaAccountId || 'act_77728399102 (Demo)'}</span></li>
+                      <li>API Version: <span style={{ fontWeight: 'bold' }}>v25.0</span></li>
+                      <li>Status: <span style={{ padding: '2px 6px', fontSize: 11, background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderRadius: 4, marginLeft: 6 }}>Ativo (Server-Side)</span></li>
+                    </ul>
+                  </Card>
                 </div>
+              </div>
+            )}
+
+            {activeView === 'view-ai' && (
+              <div id="view-ai" className="dashboard-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <style dangerouslySetInnerHTML={{__html: `
+                  .urgency-card {
+                    padding: 15px;
+                    margin-bottom: 10px;
+                    border-radius: 8px;
+                    background: ${COLORS.surface};
+                    border: 1px solid ${COLORS.border};
+                    border-left-width: 4px;
+                    border-left-style: solid;
+                    color: #fff;
+                  }
+                  .urgency-card.critical {
+                    border-left-color: rgb(239, 68, 68) !important;
+                  }
+                  .urgency-card.warning {
+                    border-left-color: rgb(245, 158, 11) !important;
+                  }
+                  .urgency-card.opportunity {
+                    border-left-color: rgb(16, 185, 129) !important;
+                  }
+                  .chat-bubble {
+                    padding: 10px 14px;
+                    border-radius: 12px;
+                    margin-bottom: 10px;
+                    max-width: 80%;
+                    word-wrap: break-word;
+                  }
+                  .chat-bubble.user {
+                    background: ${COLORS.gold};
+                    color: ${COLORS.bg};
+                    align-self: flex-end;
+                    margin-left: auto;
+                  }
+                  .chat-bubble.bot {
+                    background: rgba(255, 255, 255, 0.08);
+                    color: #fff;
+                    align-self: flex-start;
+                    margin-right: auto;
+                  }
+                `}} />
+
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: COLORS.text }}>Insights de IA & Diagnóstico</h2>
+                  <p style={{ fontSize: 13, color: COLORS.textSoft }}>Análise automatizada de campanhas com Claude + MCP.</p>
+                </div>
+
+                {/* Banners */}
+                {selectedClient === 'Tratores Connect' && (
+                  <div id="ai-mapping-banner" style={{ padding: 15, borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b', fontWeight: 500 }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 8 }}></i>
+                    Mapeie a conta de anúncio correspondente nas configurações para habilitar o diagnóstico por IA.
+                  </div>
+                )}
+
+                {aiError && (
+                  <div id="ai-error-banner" style={{ padding: 15, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', fontWeight: 500 }}>
+                    <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }}></i>
+                    {aiError}
+                  </div>
+                )}
+
+                {/* Configuration Card */}
+                <Card>
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label htmlFor="select-ai-focus" style={{ display: 'block', fontSize: 13, color: COLORS.textSoft, marginBottom: 8, fontWeight: 600 }}>Foco do Diagnóstico</label>
+                      <select 
+                        id="select-ai-focus" 
+                        value={aiFocus} 
+                        onChange={e => setAiFocus(e.target.value)}
+                        style={{ width: '100%', padding: '10px 14px', background: COLORS.surfaceHi, border: `1px solid ${COLORS.border}`, borderRadius: 8, color: '#fff', outline: 'none' }}
+                      >
+                        <option value="cpl">Custo por Lead (CPL)</option>
+                        <option value="roas">Retorno sobre Investimento (ROAS)</option>
+                        <option value="reach">Alcance & Impressões</option>
+                        <option value="spend">Volume de Gastos</option>
+                      </select>
+                    </div>
+                    <div>
+                      <button 
+                        id="btn-generate-insights" 
+                        disabled={selectedClient === 'Tratores Connect' || aiLoading}
+                        onClick={generateAiInsights}
+                        className="btn btn-primary" 
+                        style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', padding: '12px 24px', borderRadius: 8, fontWeight: 600, cursor: selectedClient === 'Tratores Connect' || aiLoading ? 'not-allowed' : 'pointer', opacity: selectedClient === 'Tratores Connect' || aiLoading ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-wand-magic-sparkles"></i> Gerar Insights
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Loading Container */}
+                {aiLoading && (
+                  <Card style={{ textAlign: 'center', padding: '30px 20px' }}>
+                    <div id="ai-loading-spinner" className="spinner" style={{ margin: '0 auto 15px auto', width: 40, height: 40, border: '4px solid rgba(255,255,255,0.1)', borderTop: '4px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                    <p id="ai-progress-text" style={{ fontSize: 14, color: '#fff', fontWeight: 600, margin: 0 }}>{aiProgressText}</p>
+                  </Card>
+                )}
+
+                {/* Results Container */}
+                {aiInsights && !aiLoading && (
+                  <Card>
+                    <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 15 }}>Diagnóstico e Recomendações</h3>
+
+                    {/* Urgency Cards (Shown unless empty sheet data or unstructured) */}
+                    {aiInsights !== 'Dados insuficientes no Google Sheets para diagnóstico de IA' && 
+                     !aiInsights.includes('Crucial insight') && (
+                      <div id="ai-urgency-cards-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 15, marginBottom: 20 }}>
+                        <div className="urgency-card critical" id="card-critical">
+                          <h4 style={{ color: 'rgb(239, 68, 68)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Crítico</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            {aiInsights.includes('CPL Mismatch') 
+                              ? "CPL Mismatch: A campanha 'Lançamento Soja 2026' registrou CPL de R$ 42,50 no Meta, mas apenas 5 leads reais no CRM."
+                              : "A campanha 'Lançamento Soja 2026' registrou CPL elevado."}
+                          </p>
+                        </div>
+                        <div className="urgency-card warning" id="card-warning">
+                          <h4 style={{ color: 'rgb(245, 158, 11)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Atenção</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            Foco em 'Oferta Sementes Milho' está abaixo do esperado.
+                          </p>
+                        </div>
+                        <div className="urgency-card opportunity" id="card-opportunity">
+                          <h4 style={{ color: 'rgb(16, 185, 129)', marginTop: 0, marginBottom: 8, fontSize: 14 }}>Oportunidade</h4>
+                          <p className="card-content" style={{ margin: 0, fontSize: 13 }}>
+                            {aiInsights.includes('CPL Mismatch') 
+                              ? "Recomendação: Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'."
+                              : "Pausar 'Lançamento Soja 2026' e focar em 'Oferta Sementes Milho'."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Diagnosis Report */}
+                    {aiInsights !== 'Dados insuficientes no Google Sheets para diagnóstico de IA' && 
+                     !aiInsights.includes('Crucial insight') && (
+                      <div id="ai-diagnosis-report" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        {aiInsights}
+                      </div>
+                    )}
+
+                    {/* Fallback for Empty Sheet */}
+                    {aiInsights === 'Dados insuficientes no Google Sheets para diagnóstico de IA' && (
+                      <div id="ai-diagnosis-report" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        Dados insuficientes no Google Sheets para diagnóstico de IA
+                      </div>
+                    )}
+
+                    {/* Unstructured Fallback Container */}
+                    {aiInsights.includes('Crucial insight') && (
+                      <div id="ai-insights-fallback-container" style={{ color: '#fff', fontSize: 14, lineHeight: 1.6, padding: 15, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${COLORS.border}`, marginBottom: 20 }}>
+                        {aiInsights}
+                      </div>
+                    )}
+                  </Card>
+                )}
+
+                {/* Chat Container */}
+                <Card style={{ display: 'flex', flexDirection: 'column', height: 400 }}>
+                  <h3 style={{ fontSize: 16, color: '#fff', marginBottom: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-comments"></i> Pergunte ao Claude
+                  </h3>
+
+                  {/* Chat Log */}
+                  <div id="ai-chat-log" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 15, paddingRight: 5 }}>
+                    {aiChatLog.map((msg, idx) => (
+                      <div key={idx} className={`chat-bubble ${msg.role}`}>
+                        {msg.text}
+                      </div>
+                    ))}
+                    
+                    {/* Chat Loading Bubble */}
+                    {chatLoading && (
+                      <div id="chat-loading-bubble" className="chat-bubble bot" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.1)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                        <span>Claude está pensando...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Input Box */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input 
+                      type="text" 
+                      id="ai-chat-input" 
+                      value={aiChatInput}
+                      onChange={e => setAiChatInput(e.target.value)}
+                      onKeyPress={e => { if (e.key === 'Enter') sendAiChatMessage(); }}
+                      placeholder="Digite sua pergunta aqui..." 
+                      style={{ flex: 1, padding: '10px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${COLORS.border}`, color: '#fff', outline: 'none', fontSize: 14 }}
+                    />
+                    <button 
+                      id="btn-send-ai-chat" 
+                      onClick={sendAiChatMessage}
+                      className="btn btn-primary" 
+                      style={{ padding: '0 20px', background: COLORS.gold, color: COLORS.bg, border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                </Card>
+              </div>
+            )}
+            {/* Lightbox Modal */}
+          {lightboxImage && (
+            <div id="modal-lightbox" className="modal-overlay active" onClick={() => setLightboxImage(null)} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)' }}>
+              <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <button id="btn-close-lightbox" onClick={() => setLightboxImage(null)} style={{ position: 'absolute', top: -40, right: 0, background: 'none', border: 'none', color: '#fff', fontSize: 32, cursor: 'pointer' }}><i className="fa-solid fa-xmark"></i></button>
+                <img className="lightbox-preview-img" src={lightboxImage} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, boxShadow: '0 0 20px rgba(0,0,0,0.5)' }} />
               </div>
             </div>
           )}
+
+          {/* Settings Modal */}
+          {isSettingsOpen && (
+            <div id="modal-settings" className="modal-overlay active" style={{ pointerEvents: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.75)' }}>
+              <div className="modal-card modal-lg glass-panel animate-fade-in" style={{ pointerEvents: 'auto', background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 24, maxWidth: 600, width: '90%' }}>
+                <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ color: '#fff', fontSize: 16 }}>Configuração do ID do Pixel</h3>
+                  <button onClick={() => { setIsSettingsOpen(false); setPixelIdError(''); setPixelToastMessage(''); }} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer' }}><i className="fa-solid fa-xmark"></i></button>
+                </div>
+                <div style={{ position: 'relative', marginBottom: 16 }}>
+                  <input 
+                    type="text" 
+                    id="input-pixel-id" 
+                    value={pixelIdInput} 
+                    onChange={(e) => setPixelIdInput(e.target.value)} 
+                    placeholder="Ex: 1234567890" 
+                    className={pixelIdError ? 'error border-red' : ''}
+                    style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${pixelIdError ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: '#fff', outline: 'none' }}
+                  />
+                  {pixelIdError && <div id="pixel-id-validation-error" style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{pixelIdError}</div>}
+                </div>
+                <button 
+                  id="btn-save-settings" 
+                  onClick={() => {
+                    const val = pixelIdInput.trim();
+                    setPixelIdError('');
+                    setPixelToastMessage('');
+                    if (val === '') {
+                      setPixelIdError('Insira um ID de Pixel válido');
+                      return;
+                    }
+                    if (!/^\d+$/.test(val)) {
+                      setPixelToastMessage('ID do Pixel precisa ser apenas números');
+                      return;
+                    }
+                    setPixelId(val);
+                    setIsSettingsOpen(false);
+                  }} 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: 12, background: COLORS.gold, color: COLORS.bg, border: 'none', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
+                >
+                  Salvar ID
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Toast Message */}
+          {pixelToastMessage && (
+            <div id="pixel-error-toast" className="error-toast" style={{ display: 'flex', position: 'fixed', bottom: 20, right: 20, background: '#ef4444', color: 'white', padding: '12px 24px', borderRadius: 8, zIndex: 99999, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontWeight: 600, fontSize: 13, alignItems: 'center', gap: 10 }}>
+              <i className="fa-solid fa-circle-exclamation"></i>
+              <span className="toast-message">{pixelToastMessage}</span>
+            </div>
+          )}
+          </div>
         </div>
       );
     }
